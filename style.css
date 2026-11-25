@@ -38,3 +38,4 @@ button.sec { background: var(--bg2); color: var(--fg); outline: 1px solid var(--
 .chk { color: var(--muted); } select { font: inherit; padding: .5rem; background: var(--bg2); color: var(--fg); border: 1px solid var(--muted); border-radius: 4px; }
 table.cmp { border-collapse: collapse; width: 100%; max-width: 640px; font-variant-numeric: tabular-nums; } .cmp th, .cmp td { text-align: right; padding: .3rem .6rem; border-bottom: 1px solid var(--bg2); } .cmp th:first-child, .cmp td:first-child { text-align: left; color: var(--muted); }
 @media (max-width: 640px) { .ctl { grid-template-columns: 1fr 6.5rem; } .ctl input { grid-column: 1 / 3; } }
+#mastering select { min-width: 16rem; }

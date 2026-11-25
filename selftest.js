@@ -2,6 +2,7 @@ import { parseWav, encodeWav } from './wav.js';
 import { measure } from './meter.js';
 import { loudness, truePeak, stereo } from './analyzer.js';
 import { master, DEFAULTS } from './dsp.js';
+import { PRESETS } from './presets.js';
 
 const out = document.getElementById('out');
 let fails = 0, warns = 0;
@@ -63,6 +64,16 @@ async function main() {
     row(Math.abs(Math.abs(c[0][N >> 1]) - 0.149) < 0.005, 'Compresor', `onda cuadrada de 0,5, threshold −20 dB, ratio 4:1: esperado 0,149, medido ${Math.abs(c[0][N >> 1]).toFixed(3)}`);
     const loud = sine(60, 1.8, SR, N), r = master(loud, SR, { ...DEFAULTS, drive: 6, ceiling: -1 }), tp = truePeak(r.chs);
     row(db(tp.truePeak) <= -0.97, 'Limitador', `señal 15 dB por encima del máximo con techo −1: pico real medido ${db(tp.truePeak).toFixed(2)} dBTP`);
+    const st = sine(1000, 0.5, SR, N, 1), sa = master(st, SR, { ...DEFAULTS, satDrive: 12, ceiling: 0 }).chs[0];
+    let pk = 0; for (let i = N >> 2; i < (3 * N) >> 2; i++) pk = Math.max(pk, Math.abs(sa[i]));
+    row(Math.abs(pk - Math.tanh(0.5 * 10 ** 0.6) / 10 ** 0.6) < 0.005, 'Saturación', `curva tanh a +12 dB: pico esperado 0,242, medido ${pk.toFixed(3)}`);
+    const wv = [Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.05)), Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.07))], w0 = master(wv, SR, { ...DEFAULTS, width: 0 }).chs;
+    row(maxDiff([w0[0]], [w0[1]]) < 1e-6, 'Ancho estéreo', 'con ancho 0 los dos canales quedan idénticos (mono)');
+    const lo = sine(50, 0.3, SR, N, 1)[0], bm = master([lo, lo.map((v) => -v)], SR, { ...DEFAULTS, bassMono: 150 }).chs;
+    row(maxDiff([bm[0]], [bm[1]]) < 0.02, 'Graves en mono', `onda de 50 Hz con canales opuestos, mono hasta 150 Hz: diferencia residual ${maxDiff([bm[0]], [bm[1]]).toExponential(1)}`);
+    const sig = sine(220, 0.9, SR, SR * 3); let bad = 0;
+    for (const pr of PRESETS) { const r = master(sig, SR, { ...DEFAULTS, ...pr.p }); if (20 * Math.log10(truePeak(r.chs).truePeak) > DEFAULTS.ceiling + 0.05) bad++; }
+    row(bad === 0, 'Presets', `${PRESETS.length} presets procesados: ${bad ? bad + ' pasan el techo' : 'todos respetan el techo de −1 dBTP'}`);
   });
 
   let readOk = true;

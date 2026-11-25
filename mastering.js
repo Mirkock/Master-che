@@ -1,4 +1,5 @@
 import { master, DEFAULTS } from './dsp.js';
+import { PRESETS } from './presets.js';
 import { analyze } from './analyzer.js';
 import { encodeWav } from './wav.js';
 
@@ -27,17 +28,72 @@ const GROUPS = [
     ['ceiling', 'Techo (ceiling)', -3, 0, 0.1, 'dBTP', 'El pico real máximo permitido. −1 deja margen de seguridad para MP3 y streaming.'],
     ['limRelease', 'Release del limitador', 10, 500, 5, 'ms', 'Muy corto puede distorsionar los graves.'],
   ]],
+  ['Saturación', [
+    ['satDrive', 'Cantidad', 0, 18, 0.5, 'dB', 'Redondea y densifica agregando armónicos; también baja los picos. 0 = apagada.'],
+    ['satMix', 'Mezcla', 0, 100, 1, '%', 'Cuánto del sonido saturado se mezcla con el original.'],
+  ]],
+  ['Exciter', [
+    ['excAmt', 'Cantidad', 0, 100, 1, '%', 'Agrega brillo y armónicos en los agudos. 0 = apagado.'],
+    ['excF', 'Desde qué frecuencia', 2000, 12000, 50, 'Hz', 'Solo se excita lo que está por encima de esta frecuencia.'],
+  ]],
+  ['Estéreo', [
+    ['width', 'Ancho', 0, 200, 1, '%', '100 = sin cambios. 0 = mono. Más de 100 ensancha, pero puede restar compatibilidad mono.'],
+    ['bassMono', 'Graves en mono hasta', 0, 250, 5, 'Hz', 'Pasa a mono todo lo que está por debajo de esta frecuencia (0 = apagado). Ayuda en parlantes chicos.'],
+  ]],
 ];
+const RANGE = Object.fromEntries(GROUPS.flatMap(([, r]) => r.map(([k, , lo, hi]) => [k, [lo, hi]])));
+const clean = (p) => { const o = {}; for (const k of Object.keys(DEFAULTS)) { const v = Number(p?.[k]); if (p?.[k] !== undefined && Number.isFinite(v)) o[k] = Math.min(RANGE[k][1], Math.max(RANGE[k][0], v)); } return o; };
+const store = {
+  load() { try { return JSON.parse(localStorage.getItem('masterche.presets')) || []; } catch { return []; } },
+  save(a) { try { localStorage.setItem('masterche.presets', JSON.stringify(a)); return true; } catch { return false; } },
+};
+const find = (id) => (id.startsWith('u:') ? store.load().find((u) => 'u:' + u.name === id) : PRESETS.find((x) => 'b:' + x.name === id));
 
 export function initMastering(api) {
   const root = document.getElementById('mastering'), P = { ...DEFAULTS };
-  let masterChs = null, ana = null, cur = 'orig';
+  let masterChs = null, ana = null, cur = 'orig', sel = '';
   const mk = (tag, text, cls, parent = root) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; parent.append(e); return e; };
+
+  function presetBar() {
+    mk('h3', 'Presets');
+    const bar = mk('div', '', 'bar2'), pre = mk('select', '', '', bar), o0 = mk('option', '— Valores propios —', '', pre); o0.value = '';
+    const mine = store.load();
+    if (mine.length) { const g = mk('optgroup', '', '', pre); g.label = 'Mis presets'; for (const u of mine) mk('option', u.name, '', g).value = 'u:' + u.name; }
+    for (const cat of [...new Set(PRESETS.map((x) => x.cat))]) { const g = mk('optgroup', '', '', pre); g.label = cat; for (const x of PRESETS.filter((y) => y.cat === cat)) mk('option', x.name, '', g).value = 'b:' + x.name; }
+    pre.value = sel;
+    pre.addEventListener('change', () => { sel = pre.value; if (sel) Object.assign(P, DEFAULTS, clean(find(sel).p)); build(); });
+    const f = sel && find(sel); mk('small', f ? f.why || 'Preset propio.' : 'Ajustá los controles a gusto y guardalos como preset propio.', 'hint');
+    const bar2 = mk('div', '', 'bar2'), isU = sel.startsWith('u:'), uname = sel.slice(2);
+    const btn = (t, fn, on = true) => { const b = mk('button', t, 'sec', bar2); b.type = 'button'; b.disabled = !on; b.addEventListener('click', fn); };
+    const put = (name, p, old) => { const a = store.load().filter((u) => u.name !== name && u.name !== old); a.push({ name, p }); return store.save(a); };
+    const ask = (msg, def) => (prompt(msg, def) || '').trim();
+    const taken = (n) => store.load().some((u) => u.name === n);
+    const noStore = () => alert('El navegador no permite guardar presets (almacenamiento bloqueado). Probá con otro navegador o sin modo privado.');
+    btn('Guardar como…', () => { const n = ask('Nombre del preset:', isU ? uname + ' copia' : ''); if (!n || (taken(n) && !confirm(`Ya existe "${n}". ¿Reemplazarlo?`))) return; if (put(n, clean(P))) { sel = 'u:' + n; build(); } else noStore(); });
+    btn('Guardar cambios', () => { if (put(uname, clean(P))) build(); else noStore(); }, isU);
+    btn('Renombrar', () => { const n = ask('Nuevo nombre:', uname); if (!n || n === uname || (taken(n) && !confirm(`Ya existe "${n}". ¿Reemplazarlo?`))) return; if (put(n, clean(find(sel).p), uname)) { sel = 'u:' + n; build(); } else noStore(); }, isU);
+    btn('Eliminar', () => { if (confirm(`¿Eliminar el preset "${uname}"?`)) { store.save(store.load().filter((u) => u.name !== uname)); sel = ''; build(); } }, isU);
+    btn('Exportar mis presets', () => {
+      if (!store.load().length) return alert('Todavía no tenés presets propios.');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(store.load(), null, 1)], { type: 'application/json' })); a.download = 'MasterChe_presets.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    });
+    const imp = document.createElement('input'); imp.type = 'file'; imp.accept = '.json,application/json'; imp.hidden = true;
+    imp.addEventListener('change', async () => {
+      try {
+        const arr = JSON.parse(await imp.files[0].text()); let n = 0, a = store.load();
+        for (const u of Array.isArray(arr) ? arr : []) if (typeof u?.name === 'string' && u.name.trim() && typeof u.p === 'object') { a = a.filter((x) => x.name !== u.name.trim()); a.push({ name: u.name.trim().slice(0, 60), p: clean(u.p) }); n++; }
+        if (!store.save(a)) return noStore();
+        alert(`Se importaron ${n} preset(s).`); build();
+      } catch { alert('El archivo no es válido.'); }
+    });
+    btn('Importar presets', () => imp.click()); bar2.append(imp);
+  }
 
   function build() {
     root.replaceChildren(); masterChs = null; cur = 'orig';
     mk('h2', 'Mastering');
-    mk('small', 'Con todo en su valor inicial la canción solo pasa por el limitador. Ajustá lo que quieras y apretá "Procesar". El original no se modifica.', 'hint');
+    presetBar();
+    mk('small', 'Con todo en su valor inicial la canción solo pasa por el limitador. Elegí un preset o ajustá a mano y apretá "Procesar". El original no se modifica.', 'hint');
     for (const [title, rows] of GROUPS) {
       mk('h3', title);
       for (const [k, label, min, max, step, unit, hint] of rows) {
@@ -61,7 +117,7 @@ export function initMastering(api) {
       } catch (e) { status.textContent = 'Error: ' + e.message; }
       go.disabled = false;
     });
-    reset.addEventListener('click', () => { Object.assign(P, DEFAULTS); build(); });
+    reset.addEventListener('click', () => { Object.assign(P, DEFAULTS); sel = ''; build(); });
   }
 
   function results(res) {

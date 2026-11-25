@@ -32,8 +32,8 @@ export function parseWav(buf) {
   return { sampleRate: sr, bits, isFloat: t === 3, channels: data };
 }
 
-// bits: 16, 24 (enteros) o 32 (float). Sin dither todavía (llega con la exportación).
-export function encodeWav(chs, sr, bits = 24) {
+// bits: 16, 24 (enteros) o 32 (float). dither: ruido TPDF de ±1 LSB, solo en 16 bits.
+export function encodeWav(chs, sr, bits = 24, dither = false) {
   const ch = chs.length, n = chs[0].length, bps = bits / 8, size = n * ch * bps;
   const buf = new ArrayBuffer(44 + size), v = new DataView(buf);
   const s = (o, str) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -45,7 +45,7 @@ export function encodeWav(chs, sr, bits = 24) {
   for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++, p += bps) {
     const x = chs[c][i];
     if (bits === 32) { v.setFloat32(p, x, true); continue; }
-    const m = bits === 16 ? 32768 : 8388608, q = Math.max(-m, Math.min(m - 1, Math.round(x * m)));
+    const m = bits === 16 ? 32768 : 8388608, d = dither && bits === 16 ? Math.random() - Math.random() : 0, q = Math.max(-m, Math.min(m - 1, Math.round(x * m + d)));
     if (bits === 16) v.setInt16(p, q, true);
     else { v.setUint8(p, q & 255); v.setUint8(p + 1, (q >> 8) & 255); v.setUint8(p + 2, (q >> 16) & 255); }
   }

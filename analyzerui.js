@@ -1,6 +1,6 @@
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const f = (x, u = '', d = 1) => (x === Infinity || x === -Infinity || Number.isNaN(x) ? '—' : x.toFixed(d) + u);
-const hz = (x) => (x >= 1000 ? x / 1000 + ' k' : String(Math.round(x)));
+const hz = (x) => (x >= 1000 ? +(x / 1000).toFixed(1) + ' k' : String(Math.round(x)));
 
 export function renderAnalysis(a, root) {
   root.replaceChildren();

@@ -92,7 +92,7 @@ export function spectrum(chs, fs) {
   }
   if (!frames) return null;
   const bin = fs / N, sum = (lo, hi) => { let s = 0; for (let k = Math.max(1, Math.ceil(lo / bin)); k <= N / 2 && k * bin < hi; k++) s += pw[k]; return s; };
-  const bands = []; for (let k = -15; k <= 13; k++) { const fc = 1000 * 2 ** (k / 3); bands.push({ fc, p: sum(fc / 2 ** (1 / 6), fc * 2 ** (1 / 6)) }); }
+  const bands = []; for (let k = -17; k <= 13; k++) { const fc = 1000 * 2 ** (k / 3); bands.push({ fc, p: sum(fc / 2 ** (1 / 6), fc * 2 ** (1 / 6)) }); }
   const mx = Math.max(...bands.map((b) => b.p)); bands.forEach((b) => (b.db = db10(b.p / mx)));
   const ed = [20, 60, 250, 500, 2000, 6000, 20000], nm = ['Subgraves (20–60 Hz)', 'Graves (60–250 Hz)', 'Medios-bajos (250–500 Hz)', 'Medios (0,5–2 kHz)', 'Presencia (2–6 kHz)', 'Agudos (6–20 kHz)'];
   const e = nm.map((_, i) => sum(ed[i], ed[i + 1])), tot = e.reduce((a, b) => a + b, 0);

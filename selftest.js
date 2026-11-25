@@ -1,6 +1,7 @@
 import { parseWav, encodeWav } from './wav.js';
 import { measure } from './meter.js';
 import { loudness, truePeak, stereo } from './analyzer.js';
+import { master, DEFAULTS } from './dsp.js';
 
 const out = document.getElementById('out');
 let fails = 0, warns = 0;
@@ -50,6 +51,18 @@ async function main() {
     row(Math.abs(20 * Math.log10(p.truePeak)) < 0.15 && p.samplePeak < 0.72, 'True peak', `onda cuyas muestras valen ±0,707 pero cuyo pico real es 0 dBTP: medido ${(20 * Math.log10(p.truePeak)).toFixed(2)} dBTP`);
     const s = stereo(sine(441, 0.5, SR, N)), t = stereo([sine(441, 0.5, SR, N, 1)[0], sine(441, 0.5, SR, N, 1)[0].map((v) => -v)]);
     row(Math.abs(s.correlation - 1) < 1e-6 && Math.abs(s.monoLossDb) < 1e-6 && Math.abs(t.correlation + 1) < 1e-6, 'Estéreo', `canales iguales: correlación ${s.correlation.toFixed(2)}, pérdida mono ${s.monoLossDb.toFixed(2)} dB; canales invertidos: correlación ${t.correlation.toFixed(2)}`);
+  });
+
+  await run('Mastering', async () => {
+    const db = (v) => 20 * Math.log10(v), mid = (c) => { let s = 0; for (let i = N / 4; i < (3 * N) / 4; i++) s += c[0][i] ** 2; return Math.sqrt(s / (N / 2)); };
+    const x = sine(440, 0.3, SR, N), same = master(x, SR).chs;
+    row(maxDiff(x, same) === 0, 'Cadena en neutro', 'con todo en su valor inicial la señal no cambia');
+    const y = sine(1000, 0.1, SR, N), e = master(y, SR, { ...DEFAULTS, lmF: 1000, lmG: 6 }).chs;
+    row(Math.abs(db(mid(e) / mid(y)) - 6) < 0.1, 'Ecualizador', `+6 dB a 1 kHz: medido +${db(mid(e) / mid(y)).toFixed(2)} dB`);
+    const sq = [0, 1].map(() => Float32Array.from({ length: N }, (_, i) => (Math.floor(i / 50) % 2 ? 0.5 : -0.5))), c = master(sq, SR, { ...DEFAULTS, thr: -20, ratio: 4, knee: 0, attack: 5, release: 100 }).chs;
+    row(Math.abs(Math.abs(c[0][N >> 1]) - 0.149) < 0.005, 'Compresor', `onda cuadrada de 0,5, threshold −20 dB, ratio 4:1: esperado 0,149, medido ${Math.abs(c[0][N >> 1]).toFixed(3)}`);
+    const loud = sine(60, 1.8, SR, N), r = master(loud, SR, { ...DEFAULTS, drive: 6, ceiling: -1 }), tp = truePeak(r.chs);
+    row(db(tp.truePeak) <= -0.97, 'Limitador', `señal 15 dB por encima del máximo con techo −1: pico real medido ${db(tp.truePeak).toFixed(2)} dBTP`);
   });
 
   let readOk = true;

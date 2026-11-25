@@ -2,6 +2,7 @@ import { parseWav } from './wav.js';
 import { measure } from './meter.js';
 import { analyze } from './analyzer.js';
 import { renderAnalysis } from './analyzerui.js';
+import { initMastering } from './mastering.js';
 
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v);
@@ -10,6 +11,7 @@ const db = (x) => (isFinite(x) ? x.toFixed(2) + ' dBFS' : '−∞ dBFS');
 
 let ctx = null, buffer = null, chs = null, src = null;
 let playing = false, startedAt = 0, offset = 0;
+let bufs = { orig: null, master: null }, which = 'orig', trims = { orig: 1, master: 1 }, lastA = null, songName = '', mast = null;
 
 function setCtx(sr) {
   if (ctx && (!sr || ctx.sampleRate === sr)) return;
@@ -26,7 +28,8 @@ function play() {
   if (offset >= buffer.duration - 0.01) offset = 0;
   src = ctx.createBufferSource();
   src.buffer = buffer;
-  src.connect(ctx.destination);
+  const gn = ctx.createGain(); gn.gain.value = trims[which];
+  src.connect(gn).connect(ctx.destination);
   src.onended = () => { if (playing) { playing = false; offset = 0; ui(); } };
   startedAt = ctx.currentTime - offset;
   src.start(0, offset);
@@ -45,6 +48,17 @@ function seek(t) {
   if (was) play(); else ui();
 }
 
+function use(w) {
+  if (!bufs[w]) return;
+  const was = playing, t = now(); stop();
+  which = w; buffer = bufs[w]; offset = Math.min(t, buffer.duration - 0.01);
+  if (was) play(); else ui();
+}
+const api = {
+  getChs: () => chs, getSr: () => bufs.orig.sampleRate, getName: () => songName, getOrig: () => lastA, use,
+  setTrims: (o, m) => { trims = { orig: o, master: m }; },
+  setMaster: (mchs, sr) => { const b = ctx.createBuffer(mchs.length, mchs[0].length, sr); mchs.forEach((d, c) => b.copyToChannel(d, c)); bufs.master = b; },
+};
 function ui() {
   if (!buffer) return;
   $('play').textContent = playing ? 'Pausar' : 'Reproducir';
@@ -106,12 +120,16 @@ async function load(file) {
       kind = 'MP3 (decodificado por el navegador)';
     }
   } catch (e) { alert('No se pudo cargar el archivo: ' + e.message); return; }
+  bufs = { orig: buffer, master: null }; which = 'orig'; trims = { orig: 1, master: 1 }; songName = file.name; lastA = null;
+  $('mastering').hidden = true;
   $('name').textContent = file.name;
   $('player').hidden = false;
   drawWave(); showInfo(file, kind); ui();
   const a = $('analysis'); a.textContent = 'Analizando…';
   await new Promise((r) => setTimeout(r, 30));
-  renderAnalysis(analyze(chs, buffer.sampleRate), a);
+  lastA = analyze(chs, buffer.sampleRate);
+  renderAnalysis(lastA, a);
+  mast = mast || initMastering(api); mast.reset(); $('mastering').hidden = false;
 }
 
 $('file').addEventListener('change', (e) => e.target.files[0] && load(e.target.files[0]));

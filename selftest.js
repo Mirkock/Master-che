@@ -67,7 +67,7 @@ async function main() {
 
   await run('AudioWorklet', async () => {
     const x = noise(N), o = new OfflineAudioContext(2, N, SR);
-    await o.audioWorklet.addModule('js/worklets/passthrough.js');
+    await o.audioWorklet.addModule('passthrough.js');
     const b = o.createBuffer(2, N, SR); x.forEach((d, c) => b.copyToChannel(d, c));
     const s = o.createBufferSource(); s.buffer = b;
     const n = new AudioWorkletNode(o, 'passthrough', { outputChannelCount: [2] });

@@ -3,6 +3,7 @@ import { measure } from './meter.js';
 import { loudness, truePeak, stereo } from './analyzer.js';
 import { master, DEFAULTS } from './dsp.js';
 import { PRESETS } from './presets.js';
+import { DEVICES, deviceStages } from './devices.js';
 
 const out = document.getElementById('out');
 let fails = 0, warns = 0;
@@ -69,11 +70,28 @@ async function main() {
     row(Math.abs(pk - Math.tanh(0.5 * 10 ** 0.6) / 10 ** 0.6) < 0.005, 'Saturación', `curva tanh a +12 dB: pico esperado 0,242, medido ${pk.toFixed(3)}`);
     const wv = [Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.05)), Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.07))], w0 = master(wv, SR, { ...DEFAULTS, width: 0 }).chs;
     row(maxDiff([w0[0]], [w0[1]]) < 1e-6, 'Ancho estéreo', 'con ancho 0 los dos canales quedan idénticos (mono)');
-    const lo = sine(50, 0.3, SR, N, 1)[0], bm = master([lo, lo.map((v) => -v)], SR, { ...DEFAULTS, bassMono: 150 }).chs;
-    row(maxDiff([bm[0]], [bm[1]]) < 0.02, 'Graves en mono', `onda de 50 Hz con canales opuestos, mono hasta 150 Hz: diferencia residual ${maxDiff([bm[0]], [bm[1]]).toExponential(1)}`);
+    const lo = sine(50, 0.3, SR, N, 1)[0], bm = master([lo, lo.map((v) => -v)], SR, { ...DEFAULTS, bassMono: 150 }).chs, side = (c) => { let s = 0; for (let i = N >> 2; i < (3 * N) >> 2; i++) s += ((c[0][i] - c[1][i]) / 2) ** 2; return Math.sqrt(s / (N / 2)); };
+    const rem = side(bm) / side([lo, lo.map((v) => -v)]);
+    row(rem < 0.05, 'Graves en mono', `onda de 50 Hz con canales opuestos, mono hasta 150 Hz: queda ${(rem * 100).toFixed(1)} % del lado (medido en la parte central, sin el arranque del filtro)`);
     const sig = sine(220, 0.9, SR, SR * 3); let bad = 0;
     for (const pr of PRESETS) { const r = master(sig, SR, { ...DEFAULTS, ...pr.p }); if (20 * Math.log10(truePeak(r.chs).truePeak) > DEFAULTS.ceiling + 0.05) bad++; }
     row(bad === 0, 'Presets', `${PRESETS.length} presets procesados: ${bad ? bad + ' pasan el techo' : 'todos respetan el techo de −1 dBTP'}`);
+  });
+
+  await run('Dispositivos', async () => {
+    const lvl = async (id, chs) => {
+      const o = new OfflineAudioContext(2, SR, SR), b = o.createBuffer(2, SR, SR); chs.forEach((d, c) => b.copyToChannel(d, c));
+      const src = o.createBufferSource(); src.buffer = b; let last = src;
+      for (const st of deviceStages(o, DEVICES.find((d) => d.id === id))) { last.connect(st.in); last = st.out; }
+      last.connect(o.destination); src.start();
+      const d = (await o.startRendering()).getChannelData(0); let s = 0; for (let i = SR >> 1; i < SR; i++) s += d[i] ** 2; return Math.sqrt(s / (SR >> 1));
+    };
+    const lo = await lvl('phone', sine(100, 0.3, SR, SR)), mid = await lvl('phone', sine(1000, 0.3, SR, SR)), r1 = 20 * Math.log10(lo / mid);
+    row(r1 < -25, 'Celular', `un tono de 100 Hz sale ${r1.toFixed(1)} dB respecto de uno de 1 kHz (casi no hay graves)`);
+    const s2 = sine(220, 0.3, SR, SR, 1)[0], mono = await lvl('mono', [s2, s2.map((v) => -v)]);
+    row(mono < 1e-4, 'Mono', `canales en oposición de fase: nivel resultante ${mono.toExponential(1)} (se cancelan)`);
+    const same = await lvl('ref', sine(440, 0.3, SR, SR)), orig = (() => { let s = 0; const d = sine(440, 0.3, SR, SR)[0]; for (let i = SR >> 1; i < SR; i++) s += d[i] ** 2; return Math.sqrt(s / (SR >> 1)); })();
+    row(Math.abs(same / orig - 1) < 1e-4, 'Sin simulación', 'el perfil "sin simulación" no altera el nivel');
   });
 
   let readOk = true;

@@ -1,5 +1,6 @@
 import { master, DEFAULTS } from './dsp.js';
 import { PRESETS } from './presets.js';
+import { DEVICES } from './devices.js';
 import { analyze } from './analyzer.js';
 import { encodeWav } from './wav.js';
 
@@ -49,10 +50,13 @@ const store = {
 };
 const find = (id) => (id.startsWith('u:') ? store.load().find((u) => 'u:' + u.name === id) : PRESETS.find((x) => 'b:' + x.name === id));
 
+export const MAX_VERSIONS = 6;
+
 export function initMastering(api) {
-  const root = document.getElementById('mastering'), P = { ...DEFAULTS };
-  let masterChs = null, ana = null, cur = 'orig', sel = '';
-  const mk = (tag, text, cls, parent = root) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; parent.append(e); return e; };
+  const ctlRoot = document.getElementById('mastering'), cmpRoot = document.getElementById('compare'), P = { ...DEFAULTS };
+  let sel = '', versions = [], counter = 0, cur = 'orig', matchOn = true, devId = 'ref', probe = { on: false, mode: 'boost', hz: 1000 };
+  const mk = (tag, text, cls, parent = ctlRoot) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; parent.append(e); return e; };
+  const mc = (tag, text, cls, parent = cmpRoot) => mk(tag, text, cls, parent);
 
   function presetBar() {
     mk('h3', 'Presets');
@@ -90,10 +94,10 @@ export function initMastering(api) {
   }
 
   function build() {
-    root.replaceChildren(); masterChs = null; cur = 'orig';
+    ctlRoot.replaceChildren();
     mk('h2', 'Mastering');
     presetBar();
-    mk('small', 'Con todo en su valor inicial la canción solo pasa por el limitador. Elegí un preset o ajustá a mano y apretá "Procesar". El original no se modifica.', 'hint');
+    mk('small', 'Con todo en su valor inicial la canción solo pasa por el limitador. Elegí un preset o ajustá a mano y apretá "Procesar". Cada vez que procesás se guarda una versión nueva para comparar (arriba, en "Escuchar y comparar").', 'hint');
     for (const [title, rows] of GROUPS) {
       mk('h3', title);
       for (const [k, label, min, max, step, unit, hint] of rows) {
@@ -106,55 +110,106 @@ export function initMastering(api) {
     const bar = mk('div', '', 'bar2');
     const go = mk('button', 'Procesar', '', bar), reset = mk('button', 'Valores iniciales', 'sec', bar), status = mk('span', '', 'hint', bar);
     go.type = reset.type = 'button';
-    const res = mk('div', '', 'res'); res.hidden = true;
     go.addEventListener('click', async () => {
       go.disabled = true; status.textContent = 'Procesando…'; await new Promise((r) => setTimeout(r, 30));
       try {
-        const sr = api.getSr(), out = master(api.getChs(), sr, P);
-        masterChs = out.chs; ana = analyze(masterChs, sr); api.setMaster(masterChs, sr);
-        status.textContent = out.ceilingUsed < P.ceiling - 0.05 ? `Listo. Para no pasar el techo, el limitador trabajó con un techo interno de ${out.ceilingUsed.toFixed(1)} dB.` : 'Listo.';
-        results(res);
+        const sr = api.getSr(), out = master(api.getChs(), sr, P), ana = analyze(out.chs, sr), f = sel && find(sel);
+        const same = f && Object.keys(DEFAULTS).every((k) => ({ ...DEFAULTS, ...clean(f.p) })[k] === P[k]);
+        const n = ++counter;
+        versions.push({ id: 'v' + n, n, label: `V${n} · ${f ? f.name + (same ? '' : ' (modificado)') : 'valores propios'}`, chs: out.chs, ana });
+        let dropped = '';
+        if (versions.length > MAX_VERSIONS) dropped = ` Se descartó ${versions.shift().label.split(' ·')[0]} para no llenar la memoria.`;
+        cur = 'v' + n; listen(); renderCompare();
+        status.textContent = (out.ceilingUsed < P.ceiling - 0.05 ? `Listo (V${n}). El limitador trabajó con un techo interno de ${out.ceilingUsed.toFixed(1)} dB para no pasar el techo.` : `Listo (V${n}).`) + dropped;
+        cmpRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (e) { status.textContent = 'Error: ' + e.message; }
       go.disabled = false;
     });
     reset.addEventListener('click', () => { Object.assign(P, DEFAULTS); sel = ''; build(); });
   }
 
-  function results(res) {
-    res.hidden = false; res.replaceChildren();
-    mk('h3', 'Escuchar y comparar', '', res);
-    const row = mk('div', '', 'bar2', res), bo = mk('button', 'Original', '', row), bm = mk('button', 'Master', 'sec', row);
-    const lab = mk('label', '', 'chk', row), cb = mk('input', '', '', lab); cb.type = 'checkbox'; cb.checked = true; lab.append(' Igualar volumen al comparar');
-    bo.type = bm.type = 'button';
-    const o = api.getOrig(), m = ana, d = m.lufs - o.lufs, note = mk('small', '', 'hint', res);
-    const pick = (w) => { cur = w; bo.className = w === 'orig' ? '' : 'sec'; bm.className = w === 'master' ? '' : 'sec'; api.use(w); };
-    const trims = () => {
-      const on = cb.checked && isFinite(d); api.setTrims(on && d < 0 ? 10 ** (d / 20) : 1, on && d > 0 ? 10 ** (-d / 20) : 1);
-      note.textContent = on ? `Volumen igualado: se baja ${Math.abs(d).toFixed(1)} dB la versión ${d > 0 ? 'master' : 'original'} para que la diferencia no engañe.` : 'Volumen sin igualar: la versión más fuerte puede parecer mejor sin serlo.';
-      api.use(cur);
-    };
-    bo.addEventListener('click', () => pick('orig')); bm.addEventListener('click', () => pick('master')); cb.addEventListener('change', trims);
-    pick('master'); trims();
-
-    mk('h3', 'Antes y después', '', res);
-    const t = mk('table', '', 'cmp', res), r0 = mk('tr', '', '', t);
-    for (const h of ['', 'Original', 'Master', 'Cambio']) mk('th', h, '', r0);
-    for (const [name, key, u, dd] of [['LUFS integrado', 'lufs', ' LUFS', 1], ['True peak', 'truePeakDb', ' dBTP', 2], ['Pico de muestra', 'samplePeakDb', ' dBFS', 2], ['RMS', 'rmsDb', ' dBFS', 1], ['Factor de cresta', 'crestDb', ' dB', 1], ['Rango de volumen (LRA)', 'lra', ' LU', 1]]) {
-      const r = mk('tr', '', '', t), f = (x) => (isFinite(x) ? x.toFixed(dd) + u : '—'), c = m[key] - o[key];
-      mk('td', name, '', r); mk('td', f(o[key]), '', r); mk('td', f(m[key]), '', r); mk('td', isFinite(c) ? (c > 0 ? '+' : '') + c.toFixed(dd) : '—', '', r);
+  // Selecciona qué se escucha (original o una versión) y a qué volumen se compara.
+  function listen() {
+    const o = api.getOrig(), v = versions.find((x) => x.id === cur);
+    if (!v) cur = 'orig';
+    let trim = 1;
+    if (matchOn && o) {
+      const tgt = Math.min(...[o.lufs, ...versions.map((x) => x.ana.lufs)].filter(isFinite)), mine = v ? v.ana.lufs : o.lufs;
+      if (isFinite(tgt) && isFinite(mine)) trim = 10 ** ((tgt - mine) / 20);
     }
-    mk('h3', 'Exportar', '', res);
-    const ex = mk('div', '', 'bar2', res), sel = mk('select', '', '', ex);
-    for (const [v, l] of [[24, 'WAV 24 bits'], [16, 'WAV 16 bits (con dither)'], [32, 'WAV 32 bits float']]) { const op = mk('option', l, '', sel); op.value = v; }
-    const dl = mk('button', 'Descargar master', '', ex); dl.type = 'button';
-    mk('small', 'Se exporta a la misma frecuencia de muestreo del original. Con 16 bits se agrega dither para evitar distorsión de cuantización; si el techo está en 0 dB eso puede rozar el máximo, por eso conviene dejar −1 dB.', 'hint', res);
-    dl.addEventListener('click', () => {
-      const bits = +sel.value, buf = encodeWav(masterChs, api.getSr(), bits, bits === 16), a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-      a.download = api.getName().replace(/\.[^.]+$/, '') + `_MasterChe_${bits}${bits === 32 ? 'f' : ''}.wav`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
-    });
+    api.use(cur, v ? v.chs : null, trim);
   }
 
+  function renderCompare() {
+    cmpRoot.replaceChildren();
+    const o = api.getOrig(); if (!o) return;
+    mc('h2', 'Escuchar y comparar');
+    const vrow = mc('div', '', 'bar2');
+    for (const [id, label] of [['orig', 'Original'], ...versions.map((v) => [v.id, v.label])]) {
+      const b = mc('button', label, id === cur ? '' : 'sec', vrow); b.type = 'button';
+      b.addEventListener('click', () => { cur = id; listen(); renderCompare(); });
+    }
+    if (cur !== 'orig') { const q = mc('button', 'Quitar esta versión', 'sec', vrow); q.type = 'button'; q.addEventListener('click', () => { versions = versions.filter((v) => v.id !== cur); cur = 'orig'; listen(); renderCompare(); }); }
+    const lab = mc('label', '', 'chk', vrow), cb = mc('input', '', '', lab); cb.type = 'checkbox'; cb.checked = matchOn; lab.append(' Igualar volumen');
+    cb.addEventListener('change', () => { matchOn = cb.checked; listen(); renderCompare(); });
+    const lufsAll = [o.lufs, ...versions.map((v) => v.ana.lufs)].filter(isFinite);
+    mc('small', versions.length
+      ? (matchOn ? `Volumen igualado: todo se escucha al nivel de la versión más baja (${Math.min(...lufsAll).toFixed(1)} LUFS), así la más fuerte no parece mejor solo por sonar más.` : 'Volumen sin igualar: la versión más fuerte puede parecer mejor sin serlo.')
+      : 'Todavía no procesaste nada: abajo elegí un preset y apretá "Procesar". Podés probar los dispositivos con el original.', 'hint');
+
+    mc('h3', 'Simular un dispositivo');
+    const drow = mc('div', '', 'bar2'), ds = mc('select', '', '', drow);
+    for (const d of DEVICES) mc('option', d.name, '', ds).value = d.id;
+    ds.value = devId; const dn = mc('small', DEVICES.find((d) => d.id === devId).note, 'hint');
+    ds.addEventListener('change', () => { devId = ds.value; api.setDevice(devId); dn.textContent = DEVICES.find((d) => d.id === devId).note; });
+    mc('small', 'Son perfiles aproximados, no mediciones de modelos concretos. La simulación solo cambia lo que escuchás: no modifica el original ni lo que exportás. Podés cambiar de versión o de dispositivo mientras suena.', 'hint');
+
+    mc('h3', 'Buscador de frecuencias (para encontrar qué suena mal)');
+    mc('small', 'Con la canción sonando: activalo en "Realzar" y mové la frecuencia. Donde el sonido se vuelva más molesto (turbio, áspero, nasal) suele estar el problema. "Solo esta zona" te deja oír únicamente esa franja. Cuando la encuentres, usá el botón para cortarla en el ecualizador. Esto es solo para escuchar y no se exporta.', 'hint');
+    const prow = mc('div', '', 'bar2'), pOn = mc('button', probe.on ? 'Desactivar' : 'Activar', probe.on ? '' : 'sec', prow), pm = mc('select', '', '', prow);
+    pOn.type = 'button';
+    for (const [v, t] of [['boost', 'Realzar (+9 dB)'], ['solo', 'Solo esta zona']]) mc('option', t, '', pm).value = v;
+    pm.value = probe.mode;
+    const sl = mc('input', '', '', prow), hzLab = mc('b', '', '', prow), cut = mc('button', '', 'sec', prow); cut.type = 'button';
+    Object.assign(sl, { type: 'range', min: 0, max: 1000, step: 1 }); sl.style.minWidth = '14rem';
+    const toHz = (x) => Math.round(40 * 400 ** (x / 1000)), toX = (f) => (1000 * Math.log(f / 40)) / Math.log(400);
+    const band = () => { const f = probe.hz; return f < 100 ? ['lowF', 'lowG', 'Graves'] : f <= 1000 ? ['lmF', 'lmG', 'Medios-bajos'] : f <= 8000 ? ['hmF', 'hmG', 'Medios-altos'] : ['highF', 'highG', 'Agudos']; };
+    const refresh = () => { hzLab.textContent = probe.hz >= 1000 ? (probe.hz / 1000).toFixed(2) + ' kHz' : probe.hz + ' Hz'; cut.textContent = `Cortar ${hzLab.textContent} (−3 dB) en "${band()[2]}"`; };
+    const cutMsg = mc('small', '', 'hint'); sl.value = toX(probe.hz); refresh();
+    pOn.addEventListener('click', () => { probe.on = !probe.on; api.setProbe({ on: probe.on, mode: probe.mode, f: probe.hz }); renderCompare(); });
+    pm.addEventListener('change', () => { probe.mode = pm.value; api.setProbe({ mode: probe.mode }); });
+    sl.addEventListener('input', () => { probe.hz = toHz(+sl.value); api.setProbe({ f: probe.hz }); refresh(); });
+    cut.addEventListener('click', () => {
+      const [fk, gk] = band(); P[fk] = Math.min(RANGE[fk][1], Math.max(RANGE[fk][0], probe.hz)); P[gk] = Math.min(P[gk], -3); sel = ''; build();
+      cutMsg.textContent = `Listo: se ajustó "${band()[2]}" a ${probe.hz} Hz con −3 dB en el ecualizador (más abajo, en Mastering). Apretá "Procesar" para escuchar el resultado.`;
+    });
+
+    mc('h3', 'Antes y después');
+    const wrap = mc('div', '', 'scroll'), t = mc('table', '', 'cmp', wrap), r0 = mc('tr', '', '', t);
+    const cols = [['Original', o], ...versions.map((v) => ['V' + v.n, v.ana])];
+    for (const h of ['', ...cols.map((c) => c[0])]) mc('th', h, '', r0);
+    for (const [name, key, u, dd] of [['LUFS integrado', 'lufs', ' LUFS', 1], ['True peak', 'truePeakDb', ' dBTP', 2], ['Pico de muestra', 'samplePeakDb', ' dBFS', 2], ['RMS', 'rmsDb', ' dBFS', 1], ['Factor de cresta', 'crestDb', ' dB', 1], ['Rango de volumen (LRA)', 'lra', ' LU', 1]]) {
+      const r = mc('tr', '', '', t); mc('td', name, '', r);
+      for (const [, a] of cols) mc('td', isFinite(a[key]) ? a[key].toFixed(dd) + u : '—', '', r);
+    }
+    if (versions.length) {
+      mc('h3', 'Exportar');
+      const ex = mc('div', '', 'bar2'), vs = mc('select', '', '', ex), fs = mc('select', '', '', ex);
+      for (const v of versions) mc('option', v.label, '', vs).value = v.id;
+      vs.value = cur !== 'orig' ? cur : versions[versions.length - 1].id;
+      for (const [v, l] of [[24, 'WAV 24 bits'], [16, 'WAV 16 bits (con dither)'], [32, 'WAV 32 bits float']]) mc('option', l, '', fs).value = v;
+      const dl = mc('button', 'Descargar', '', ex); dl.type = 'button';
+      mc('small', 'Se exporta la versión elegida a la misma frecuencia de muestreo del original, sin simulación de dispositivo. Con 16 bits se agrega dither; si el techo está en 0 dB eso puede rozar el máximo, por eso conviene dejar −1 dB.', 'hint');
+      dl.addEventListener('click', () => {
+        const v = versions.find((x) => x.id === vs.value), bits = +fs.value, a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([encodeWav(v.chs, api.getSr(), bits, bits === 16)], { type: 'audio/wav' }));
+        a.download = api.getName().replace(/\.[^.]+$/, '') + `_MasterChe_V${v.n}_${bits}${bits === 32 ? 'f' : ''}.wav`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      });
+    }
+  }
+
+  // Canción nueva: se descartan las versiones y se vuelve a los valores iniciales.
+  function reset() { versions = []; cur = 'orig'; counter = 0; devId = 'ref'; probe.on = false; sel = ''; Object.assign(P, DEFAULTS); build(); renderCompare(); }
   build();
-  return { reset: build };
+  return { reset };
 }

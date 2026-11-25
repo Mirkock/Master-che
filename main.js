@@ -3,6 +3,7 @@ import { measure } from './meter.js';
 import { analyze } from './analyzer.js';
 import { renderAnalysis } from './analyzerui.js';
 import { initMastering } from './mastering.js';
+import { DEVICES, deviceStages } from './devices.js';
 
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v);
@@ -11,7 +12,8 @@ const db = (x) => (isFinite(x) ? x.toFixed(2) + ' dBFS' : '−∞ dBFS');
 
 let ctx = null, buffer = null, chs = null, src = null;
 let playing = false, startedAt = 0, offset = 0;
-let bufs = { orig: null, master: null }, which = 'orig', trims = { orig: 1, master: 1 }, lastA = null, songName = '', mast = null;
+let origBuf = null, curId = 'orig', curTrim = 1, lastA = null, songName = '', mast = null;
+let gnNode = null, probeNode = null, extra = [], deviceId = 'ref', probe = { on: false, mode: 'boost', f: 1000 };
 
 function setCtx(sr) {
   if (ctx && (!sr || ctx.sampleRate === sr)) return;
@@ -28,8 +30,7 @@ function play() {
   if (offset >= buffer.duration - 0.01) offset = 0;
   src = ctx.createBufferSource();
   src.buffer = buffer;
-  const gn = ctx.createGain(); gn.gain.value = trims[which];
-  src.connect(gn).connect(ctx.destination);
+  gnNode = ctx.createGain(); src.connect(gnNode); wire();
   src.onended = () => { if (playing) { playing = false; offset = 0; ui(); } };
   startedAt = ctx.currentTime - offset;
   src.start(0, offset);
@@ -48,16 +49,41 @@ function seek(t) {
   if (was) play(); else ui();
 }
 
-function use(w) {
-  if (!bufs[w]) return;
+// Cadena de escucha: ganancia -> (sonda de frecuencias) -> (simulación de dispositivo) -> salida. No toca el audio exportado.
+function wire() {
+  if (!ctx || !gnNode) return;
+  [gnNode, ...extra].forEach((n) => n.disconnect());
+  extra = []; probeNode = null; let last = gnNode;
+  const add = (st) => { last.connect(st.in); last = st.out; extra.push(...st.all); };
+  if (probe.on) {
+    const b = (probeNode = ctx.createBiquadFilter());
+    b.type = probe.mode === 'solo' ? 'bandpass' : 'peaking'; b.frequency.value = probe.f; b.Q.value = 3; b.gain.value = 9;
+    add({ in: b, out: b, all: [b] });
+  }
+  const d = DEVICES.find((x) => x.id === deviceId);
+  if (d) for (const st of deviceStages(ctx, d)) add(st);
+  last.connect(ctx.destination);
+  gnNode.gain.value = curTrim * (probe.on && probe.mode === 'solo' ? 3 : 1);
+}
+// id: 'orig' o el id de una versión; vchs: canales de esa versión (null para el original); trim: ganancia para igualar volumen.
+function use(id, vchs, trim) {
   const was = playing, t = now(); stop();
-  which = w; buffer = bufs[w]; offset = Math.min(t, buffer.duration - 0.01);
+  if (id === 'orig') buffer = origBuf;
+  else if (curId !== id || buffer === origBuf) {
+    const b = ctx.createBuffer(vchs.length, vchs[0].length, origBuf.sampleRate);
+    vchs.forEach((d, c) => b.copyToChannel(d, c)); buffer = b;
+  }
+  curId = id; curTrim = trim; offset = Math.min(t, buffer.duration - 0.01);
   if (was) play(); else ui();
 }
 const api = {
-  getChs: () => chs, getSr: () => bufs.orig.sampleRate, getName: () => songName, getOrig: () => lastA, use,
-  setTrims: (o, m) => { trims = { orig: o, master: m }; },
-  setMaster: (mchs, sr) => { const b = ctx.createBuffer(mchs.length, mchs[0].length, sr); mchs.forEach((d, c) => b.copyToChannel(d, c)); bufs.master = b; },
+  getChs: () => chs, getSr: () => origBuf.sampleRate, getName: () => songName, getOrig: () => lastA, use,
+  setDevice: (id) => { deviceId = id; wire(); },
+  setProbe: (o) => {
+    const only = Object.keys(o).length === 1 && 'f' in o && probe.on && probeNode;
+    Object.assign(probe, o);
+    if (only) probeNode.frequency.setTargetAtTime(o.f, ctx.currentTime, 0.015); else wire();
+  },
 };
 function ui() {
   if (!buffer) return;
@@ -120,8 +146,8 @@ async function load(file) {
       kind = 'MP3 (decodificado por el navegador)';
     }
   } catch (e) { alert('No se pudo cargar el archivo: ' + e.message); return; }
-  bufs = { orig: buffer, master: null }; which = 'orig'; trims = { orig: 1, master: 1 }; songName = file.name; lastA = null;
-  $('mastering').hidden = true;
+  origBuf = buffer; curId = 'orig'; curTrim = 1; deviceId = 'ref'; probe.on = false; gnNode = null; songName = file.name; lastA = null;
+  $('mastering').hidden = $('compare').hidden = true;
   $('name').textContent = file.name;
   $('player').hidden = false;
   drawWave(); showInfo(file, kind); ui();
@@ -129,7 +155,7 @@ async function load(file) {
   await new Promise((r) => setTimeout(r, 30));
   lastA = analyze(chs, buffer.sampleRate);
   renderAnalysis(lastA, a);
-  mast = mast || initMastering(api); mast.reset(); $('mastering').hidden = false;
+  mast = mast || initMastering(api); mast.reset(); $('mastering').hidden = $('compare').hidden = false;
 }
 
 $('file').addEventListener('change', (e) => e.target.files[0] && load(e.target.files[0]));

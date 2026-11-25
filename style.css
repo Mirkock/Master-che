@@ -24,3 +24,10 @@ ul#out { list-style: none; padding: 0; display: grid; gap: .5rem; }
 #out li { background: var(--bg2); padding: .6rem .9rem; border-left: 5px solid var(--muted); }
 #out .ok { border-color: var(--accent); } #out .bad { border-color: var(--bad); } #out .warn { border-color: var(--warn); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+h2, h3 { margin: 1rem 0 .4rem; } h3 { font-size: 1rem; color: var(--accent2); }
+.hint { color: var(--muted); display: block; font-size: .8rem; }
+#analysis dl { grid-template-columns: max-content 1fr; }
+.bar { display: grid; grid-template-columns: 14rem 1fr 4.5rem; gap: .75rem; align-items: center; margin: .25rem 0; }
+.bar i { display: block; height: 14px; background: var(--accent); border-radius: 2px; }
+.bar b { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .bar { grid-template-columns: 1fr 4.5rem; } .bar i { grid-column: 1 / 3; } }

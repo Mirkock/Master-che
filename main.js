@@ -1,5 +1,7 @@
 import { parseWav } from './wav.js';
 import { measure } from './meter.js';
+import { analyze } from './analyzer.js';
+import { renderAnalysis } from './analyzerui.js';
 
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v);
@@ -107,6 +109,9 @@ async function load(file) {
   $('name').textContent = file.name;
   $('player').hidden = false;
   drawWave(); showInfo(file, kind); ui();
+  const a = $('analysis'); a.textContent = 'Analizando…';
+  await new Promise((r) => setTimeout(r, 30));
+  renderAnalysis(analyze(chs, buffer.sampleRate), a);
 }
 
 $('file').addEventListener('change', (e) => e.target.files[0] && load(e.target.files[0]));

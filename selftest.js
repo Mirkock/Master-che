@@ -1,5 +1,6 @@
 import { parseWav, encodeWav } from './wav.js';
 import { measure } from './meter.js';
+import { loudness, truePeak, stereo } from './analyzer.js';
 
 const out = document.getElementById('out');
 let fails = 0, warns = 0;
@@ -38,6 +39,17 @@ async function main() {
     const m = measure(sine(441, 0.5, SR, N, 1));
     row(Math.abs(m.peakDb + 6.0206) < 0.01, 'Pico', `seno de 0,5 de amplitud: esperado −6,02 dBFS, medido ${m.peakDb.toFixed(3)}`);
     row(Math.abs(m.rmsDb + 9.0309) < 0.02, 'RMS', `esperado −9,03 dBFS, medido ${m.rmsDb.toFixed(3)}`);
+  });
+
+  await run('Loudness', async () => {
+    const a = 10 ** (-23 / 20), x = sine(1000, a, 48000, 48000 * 20), l = loudness(x, 48000).integrated;
+    row(Math.abs(l + 23) < 0.1, 'LUFS', `seno de 1 kHz a −23 dBFS en ambos canales: esperado −23,0, medido ${l.toFixed(2)}`);
+    const y = x.map((d) => { const o = new Float32Array(d.length * 2); o.set(d); return o; }), l2 = loudness(y, 48000).integrated;
+    row(Math.abs(l2 + 23) < 0.1, 'LUFS con silencio', `mismo seno seguido de 20 s de silencio (la compuerta debe ignorarlo): medido ${l2.toFixed(2)}`);
+    const p = truePeak(Array.from({ length: 2 }, () => Float32Array.from({ length: SR }, (_, i) => Math.sin((Math.PI * i) / 2 + Math.PI / 4))));
+    row(Math.abs(20 * Math.log10(p.truePeak)) < 0.15 && p.samplePeak < 0.72, 'True peak', `onda cuyas muestras valen ±0,707 pero cuyo pico real es 0 dBTP: medido ${(20 * Math.log10(p.truePeak)).toFixed(2)} dBTP`);
+    const s = stereo(sine(441, 0.5, SR, N)), t = stereo([sine(441, 0.5, SR, N, 1)[0], sine(441, 0.5, SR, N, 1)[0].map((v) => -v)]);
+    row(Math.abs(s.correlation - 1) < 1e-6 && Math.abs(s.monoLossDb) < 1e-6 && Math.abs(t.correlation + 1) < 1e-6, 'Estéreo', `canales iguales: correlación ${s.correlation.toFixed(2)}, pérdida mono ${s.monoLossDb.toFixed(2)} dB; canales invertidos: correlación ${t.correlation.toFixed(2)}`);
   });
 
   let readOk = true;

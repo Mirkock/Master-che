@@ -40,3 +40,5 @@ table.cmp { border-collapse: collapse; min-width: 560px; font-variant-numeric: t
 @media (max-width: 640px) { .ctl { grid-template-columns: 1fr 6.5rem; } .ctl input { grid-column: 1 / 3; } }
 #mastering select { min-width: 16rem; }
 .scroll { overflow-x: auto; }
+.rec { background: var(--bg2); border-left: 5px solid var(--muted); padding: .6rem .9rem; margin: .6rem 0; } .rec.warn { border-color: var(--warn); } .rec.info { border-color: var(--accent2); }
+.rec p { margin: .25rem 0; } .rec .k { color: var(--muted); } .guide p { margin: .4rem 0; }

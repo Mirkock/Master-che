@@ -161,7 +161,18 @@ async function load(file) {
 $('file').addEventListener('change', (e) => e.target.files[0] && load(e.target.files[0]));
 $('play').addEventListener('click', () => (playing ? pause() : play()));
 $('wavebox').addEventListener('click', (e) => buffer && seek((e.offsetX / e.currentTarget.clientWidth) * buffer.duration));
-addEventListener('keydown', (e) => { if (e.code === 'Space' && buffer && e.target.tagName !== 'INPUT') { e.preventDefault(); playing ? pause() : play(); } });
+addEventListener('keydown', (e) => {
+  const tag = e.target.tagName, isRange = tag === 'INPUT' && e.target.type === 'range';
+  if (!buffer || tag === 'TEXTAREA' || (tag === 'INPUT' && !isRange && e.target.type !== 'checkbox')) return;
+  if (e.code === 'Space' && tag !== 'SELECT') { e.preventDefault(); playing ? pause() : play(); }
+  else if ((e.code === 'ArrowRight' || e.code === 'ArrowLeft') && !isRange && tag !== 'SELECT' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault(); seek(now() + (e.code === 'ArrowRight' ? 10 : -10)); // salto de 10 s
+  }
+});
+// Para que las flechas y la barra espaciadora sigan controlando la canción después de usar botones, selectores o barras.
+addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') e.target.blur(); });
+addEventListener('pointerup', (e) => { if (e.target.type === 'range') e.target.blur(); });
+addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') e.target.blur(); });
 addEventListener('resize', () => { if (chs) drawWave(); });
 const drop = $('drop');
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });

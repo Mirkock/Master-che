@@ -23,10 +23,11 @@ function filt(d, [b0, b1, b2, a1, a2]) {
 }
 
 // Compresor estéreo enlazado, detector de pico, rodilla suave, suavizado de la reducción en dB.
+const stdev = (a) => { if (!a.length) return 0; const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
 function compress(chs, fs, p) {
-  if (p.ratio <= 1.001 && !p.makeup) return;
+  if (p.ratio <= 1.001 && !p.makeup) return { max: 0, mean: 0, std: 0 };
   const n = chs[0].length, aA = Math.exp(-1 / ((fs * p.attack) / 1000)), aR = Math.exp(-1 / ((fs * p.release) / 1000)), mk = 10 ** (p.makeup / 20), k = 1 - 1 / p.ratio, W = p.knee;
-  let gr = 0;
+  let gr = 0, sum = 0, mx = 0, bs = 0, k2 = 0; const blk = Math.round(fs * 0.05), bl = [];
   for (let i = 0; i < n; i++) {
     let m = 0; for (const d of chs) { const a = Math.abs(d[i]); if (a > m) m = a; }
     const o = 20 * Math.log10(m + 1e-9) - p.thr;
@@ -34,7 +35,9 @@ function compress(chs, fs, p) {
     gr = y > gr ? aA * gr + (1 - aA) * y : aR * gr + (1 - aR) * y;
     const g = 10 ** (-gr / 20) * mk;
     for (const d of chs) d[i] *= g;
+    sum += gr; if (gr > mx) mx = gr; bs += gr; if (++k2 === blk) { bl.push(bs / blk); bs = 0; k2 = 0; }
   }
+  return { max: mx, mean: sum / n, std: stdev(bl) }; // reducción de ganancia en dB
 }
 
 // Limitador con anticipación de 5 ms: mínimo móvil + release + promedio móvil.
@@ -55,6 +58,9 @@ function limit(chs, fs, ceilDb, relMs) {
   const s = new Float32Array(n); let acc = L * rr[0]; // antes del inicio se asume el primer valor (así vale la garantía desde la muestra 0)
   for (let i = 0; i < n; i++) { acc += rr[i] - (i >= L ? rr[i - L] : rr[0]); s[i] = acc / L; }
   for (const d of chs) for (let i = 0; i < n; i++) d[i] *= s[i];
+  let mn = 1, bs = 0, k2 = 0, tot = 0, nb = 0; const blk = Math.round(fs * 0.05), bl = [];
+  for (let i = 0; i < n; i++) { if (s[i] < mn) mn = s[i]; bs += s[i]; if (++k2 === blk) { const gr = -20 * Math.log10(bs / blk); bl.push(gr); tot += gr; nb++; bs = 0; k2 = 0; } }
+  return { max: -20 * Math.log10(mn), mean: nb ? tot / nb : 0, std: stdev(bl) }; // reducción de ganancia en dB
 }
 
 // tanh(g·x) con anti-aliasing por antiderivada (ADAA de 1er orden): reduce el aliasing sin sobremuestrear.
@@ -88,20 +94,20 @@ function widen(chs, fs, p) {
   for (let i = 0; i < n; i++) { const m = (L[i] + R[i]) / 2; L[i] = m + s[i] * w; R[i] = m - s[i] * w; }
 }
 
-// chs: array de Float32Array (no se modifica). Devuelve { chs, ceilingUsed }.
+// chs: array de Float32Array (no se modifica). Devuelve { chs, ceilingUsed, stats } (stats: reducción de ganancia en dB).
 export function master(chs, fs, p = DEFAULTS) {
   const x = chs.map((d) => Float64Array.from(d));
   const bands = [['low', p.lowF, p.lowG, 0.7], ['peak', p.lmF, p.lmG, 1], ['peak', p.hmF, p.hmG, 1], ['high', p.highF, p.highG, 0.7]];
   for (const [t, f, g, q] of bands) if (Math.abs(g) > 0.01) { const co = biquad(t, fs, f, g, q); for (const d of x) filt(d, co); }
-  compress(x, fs, p); saturate(x, p); excite(x, fs, p); widen(x, fs, p);
+  const cs = compress(x, fs, p); saturate(x, p); excite(x, fs, p); widen(x, fs, p);
   const dr = 10 ** (p.drive / 20); if (dr !== 1) for (const d of x) for (let i = 0; i < d.length; i++) d[i] *= dr;
-  let ceil = p.ceiling, out;
+  let ceil = p.ceiling, out, ls;
   for (let k = 0; k < 4; k++) { // el limitador respeta picos de muestra; se mide el true peak y se corrige si hace falta
     out = x.map((d) => Float32Array.from(d));
-    limit(out, fs, ceil, p.limRelease);
+    ls = limit(out, fs, ceil, p.limRelease);
     const tp = 20 * Math.log10(truePeak(out).truePeak);
     if (tp <= p.ceiling + 0.02) break;
     ceil -= tp - p.ceiling + 0.01;
   }
-  return { chs: out, ceilingUsed: ceil };
+  return { chs: out, ceilingUsed: ceil, stats: { comp: cs, lim: ls } };
 }

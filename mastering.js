@@ -1,7 +1,8 @@
 import { master, DEFAULTS } from './dsp.js';
 import { PRESETS } from './presets.js';
-import { DEVICES } from './devices.js';
-import { analyze } from './analyzer.js';
+import { DEVICES, deviceStages } from './devices.js';
+import { analyze, loudness } from './analyzer.js';
+import { advise } from './advisor.js';
 import { encodeWav } from './wav.js';
 
 // [clave, etiqueta, mín, máx, paso, unidad, ayuda]
@@ -54,8 +55,9 @@ export const MAX_VERSIONS = 6;
 
 export function initMastering(api) {
   const ctlRoot = document.getElementById('mastering'), cmpRoot = document.getElementById('compare'), P = { ...DEFAULTS };
-  let sel = '', versions = [], counter = 0, cur = 'orig', matchOn = true, devId = 'ref', probe = { on: false, mode: 'boost', hz: 1000 };
+  let sel = '', versions = [], counter = 0, cur = 'orig', matchOn = true, devId = 'ref', probe = { on: false, mode: 'boost', hz: 1000 }, devCache = {}, measuring = false;
   const mk = (tag, text, cls, parent = ctlRoot) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; parent.append(e); return e; };
+  const f1 = (x) => (isFinite(x) ? x.toFixed(1) : '—');
   const mc = (tag, text, cls, parent = cmpRoot) => mk(tag, text, cls, parent);
 
   function presetBar() {
@@ -116,7 +118,7 @@ export function initMastering(api) {
         const sr = api.getSr(), out = master(api.getChs(), sr, P), ana = analyze(out.chs, sr), f = sel && find(sel);
         const same = f && Object.keys(DEFAULTS).every((k) => ({ ...DEFAULTS, ...clean(f.p) })[k] === P[k]);
         const n = ++counter;
-        versions.push({ id: 'v' + n, n, label: `V${n} · ${f ? f.name + (same ? '' : ' (modificado)') : 'valores propios'}`, chs: out.chs, ana });
+        versions.push({ id: 'v' + n, n, label: `V${n} · ${f ? f.name + (same ? '' : ' (modificado)') : 'valores propios'}`, chs: out.chs, ana, stats: out.stats, p: { ...P } });
         let dropped = '';
         if (versions.length > MAX_VERSIONS) dropped = ` Se descartó ${versions.shift().label.split(' ·')[0]} para no llenar la memoria.`;
         cur = 'v' + n; listen(); renderCompare();
@@ -126,6 +128,25 @@ export function initMastering(api) {
       go.disabled = false;
     });
     reset.addEventListener('click', () => { Object.assign(P, DEFAULTS); sel = ''; build(); });
+  }
+
+  // Mide cuánto cambia el volumen percibido en cada dispositivo simulado (renderiza la canción por cada perfil).
+  async function measureDevices(chs, sr, base, onStep) {
+    const rows = [];
+    for (const d of DEVICES) {
+      onStep(d.name);
+      if (d.id === 'ref') { rows.push({ id: d.id, name: d.name, lufs: base }); continue; }
+      await new Promise((r) => setTimeout(r, 20));
+      const o = new OfflineAudioContext(2, chs[0].length, sr), b = o.createBuffer(chs.length, chs[0].length, sr);
+      chs.forEach((x, c) => b.copyToChannel(x, c));
+      const src = o.createBufferSource(); src.buffer = b; let last = src;
+      for (const st of deviceStages(o, d)) { last.connect(st.in); last = st.out; }
+      last.connect(o.destination); src.start();
+      const r = await o.startRendering();
+      rows.push({ id: d.id, name: d.name, lufs: loudness([r.getChannelData(0), r.getChannelData(1)], sr).integrated });
+    }
+    rows.forEach((x) => (x.delta = x.lufs - base));
+    return rows;
   }
 
   // Selecciona qué se escucha (original o una versión) y a qué volumen se compara.
@@ -156,6 +177,50 @@ export function initMastering(api) {
     mc('small', versions.length
       ? (matchOn ? `Volumen igualado: todo se escucha al nivel de la versión más baja (${Math.min(...lufsAll).toFixed(1)} LUFS), así la más fuerte no parece mejor solo por sonar más.` : 'Volumen sin igualar: la versión más fuerte puede parecer mejor sin serlo.')
       : 'Todavía no procesaste nada: abajo elegí un preset y apretá "Procesar". Podés probar los dispositivos con el original.', 'hint');
+
+    // ---- Recomendaciones sobre la versión que se está escuchando
+    const curV = versions.find((x) => x.id === cur), curAna = curV ? curV.ana : o, curName = curV ? curV.label : 'el original';
+    mc('h3', `Recomendaciones para ${curName}`);
+    mc('small', 'Salen de mediciones de esta versión. Son orientativas: dependen de tu estilo y de tu gusto, y no hay ninguna que se aplique sola. Si algo no te suena mal, no hace falta tocarlo.', 'hint');
+    const recs = advise({ ana: curAna, stats: curV?.stats, p: curV ? curV.p : { ...P }, isOrig: !curV, devices: devCache[cur] });
+    if (!recs.length) mc('p', 'No se detectó nada llamativo con estas reglas. Eso no garantiza que suene bien: confiá también en tu oído.', 'rec info');
+    for (const r of recs) {
+      const d = mc('div', '', 'rec ' + r.sev);
+      mc('b', (r.sev === 'warn' ? 'Atención: ' : 'Ojo: ') + r.title, '', d);
+      for (const [k, v] of [['Qué se midió', r.found], ['Dónde se nota', r.where], ['Por qué pasa', r.why], ['Qué probar', r.fix]]) { const p = mc('p', '', '', d); mc('span', k + ': ', 'k', p); p.append(v); }
+      if (r.apply) {
+        const ap = mc('button', 'Aplicar en el estudio', 'sec', d); ap.type = 'button'; const msg = mc('small', '', 'hint', d);
+        ap.addEventListener('click', () => { Object.assign(P, DEFAULTS, clean({ ...(curV ? curV.p : P), ...r.apply })); sel = ''; build(); msg.textContent = 'Listo: se ajustaron los controles (más abajo, en Mastering). Apretá "Procesar" para escuchar el resultado y compararlo.'; });
+      }
+    }
+    const mrow = mc('div', '', 'bar2'), mb = mc('button', devCache[cur] ? 'Volver a medir en dispositivos' : 'Medir en todos los dispositivos', 'sec', mrow), mst = mc('small', '', 'hint', mrow); mb.type = 'button';
+    mb.disabled = measuring;
+    mb.addEventListener('click', async () => {
+      measuring = true; mb.disabled = true;
+      try { devCache[cur] = await measureDevices(curV ? curV.chs : api.getChs(), api.getSr(), curAna.lufs, (n) => (mst.textContent = `Midiendo: ${n}…`)); }
+      catch (e) { mst.textContent = 'No se pudo medir: ' + e.message; measuring = false; mb.disabled = false; return; }
+      measuring = false; renderCompare();
+    });
+    if (devCache[cur]) {
+      const t = mc('table', '', 'cmp'), h = mc('tr', '', '', t);
+      for (const x of ['Dispositivo', 'Volumen percibido', 'Cambio vs. directo']) mc('th', x, '', h);
+      for (const x of devCache[cur]) { const r = mc('tr', '', '', t); mc('td', x.name, '', r); mc('td', f1(x.lufs) + ' LUFS', '', r); mc('td', x.id === 'ref' ? '—' : (x.delta > 0 ? '+' : '') + f1(x.delta) + ' dB', '', r); }
+      mc('small', 'Mide cuánto del volumen percibido se conserva en cada perfil. Una caída grande en el celular o el Bluetooth indica que mucha energía está en graves que esos equipos no reproducen. Son perfiles aproximados.', 'hint');
+    }
+    const gd = mc('details', '', 'guide'); mc('summary', 'Guía: cuando algo suena mal, ¿qué toco?', '', gd);
+    for (const [s1, s2] of [
+      ['Suena turbio, tapado o "de cajón"', 'Zona 200–500 Hz. Bajá los medios-bajos 1,5 a 3 dB.'],
+      ['La voz está lejos o enterrada', 'Zona 2–5 kHz. Subí los medios-altos 1 a 2 dB. Si sigue, probablemente el nivel de la voz se arregla en BandLab, no en el master.'],
+      ['Áspero, molesto o con silbidos en las "s"', 'Zona 3–8 kHz. Bajá los medios-altos o los agudos 1 a 2 dB y bajá el exciter.'],
+      ['Sin brillo, opaco', 'Más de 8 kHz. Subí los agudos 1 a 2 dB.'],
+      ['Graves flojos', 'Zona 50–100 Hz. Subí los graves 1 a 2 dB (y probá en el simulador de celular: ahí casi no se oyen).'],
+      ['Graves exagerados o borrosos', 'Zona 60–150 Hz. Bajá los graves 1 a 2 dB o la saturación.'],
+      ['Aplastado, sin vida', 'Compresión y limitación de más. Bajá la ganancia de entrada al limitador y el ratio.'],
+      ['Se oyen "olas": el volumen sube y baja con los golpes', 'Es el compresor o el limitador reaccionando a los graves fuertes (bombeo). Mirá en la tabla cuánta reducción hacen, bajá la ganancia de entrada al limitador, subí los release, subí el threshold del compresor o probá con ratio 1 para aislar al culpable.'],
+      ['Sucio o distorsionado', 'Saturación o limitador forzados, o recorte que ya venía en el original. Bajá la saturación y la ganancia de entrada; revisá "Muestras en el tope" en el análisis.'],
+      ['Se pierde algo en celular o en mono', 'Probá el dispositivo "Mono" y el de celular. Pasá los graves a mono y bajá el ancho estéreo.'],
+    ]) { const p = mc('p', '', '', gd); mc('b', s1 + ': ', '', p); p.append(s2); }
+    mc('small', 'Guía general basada en cómo suelen comportarse estas zonas de frecuencia: no es una medición de tu canción. Para ubicar la zona exacta, usá el Buscador de frecuencias.', 'hint', gd);
 
     mc('h3', 'Simular un dispositivo');
     const drow = mc('div', '', 'bar2'), ds = mc('select', '', '', drow);
@@ -192,6 +257,10 @@ export function initMastering(api) {
       const r = mc('tr', '', '', t); mc('td', name, '', r);
       for (const [, a] of cols) mc('td', isFinite(a[key]) ? a[key].toFixed(dd) + u : '—', '', r);
     }
+    for (const [name, k] of [['Compresor: reducción media / máx.', 'comp'], ['Limitador: reducción media / máx.', 'lim']]) {
+      const r = mc('tr', '', '', t); mc('td', name, '', r); mc('td', '—', '', r);
+      for (const v of versions) mc('td', `${f1(v.stats[k].mean)} / ${f1(v.stats[k].max)} dB`, '', r);
+    }
     if (versions.length) {
       mc('h3', 'Exportar');
       const ex = mc('div', '', 'bar2'), vs = mc('select', '', '', ex), fs = mc('select', '', '', ex);
@@ -209,7 +278,7 @@ export function initMastering(api) {
   }
 
   // Canción nueva: se descartan las versiones y se vuelve a los valores iniciales.
-  function reset() { versions = []; cur = 'orig'; counter = 0; devId = 'ref'; probe.on = false; sel = ''; Object.assign(P, DEFAULTS); build(); renderCompare(); }
+  function reset() { versions = []; devCache = {}; cur = 'orig'; counter = 0; devId = 'ref'; probe.on = false; sel = ''; Object.assign(P, DEFAULTS); build(); renderCompare(); }
   build();
   return { reset };
 }

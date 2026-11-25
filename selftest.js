@@ -4,6 +4,7 @@ import { loudness, truePeak, stereo } from './analyzer.js';
 import { master, DEFAULTS } from './dsp.js';
 import { PRESETS } from './presets.js';
 import { DEVICES, deviceStages } from './devices.js';
+import { advise } from './advisor.js';
 
 const out = document.getElementById('out');
 let fails = 0, warns = 0;
@@ -76,6 +77,15 @@ async function main() {
     const sig = sine(220, 0.9, SR, SR * 3); let bad = 0;
     for (const pr of PRESETS) { const r = master(sig, SR, { ...DEFAULTS, ...pr.p }); if (20 * Math.log10(truePeak(r.chs).truePeak) > DEFAULTS.ceiling + 0.05) bad++; }
     row(bad === 0, 'Presets', `${PRESETS.length} presets procesados: ${bad ? bad + ' pasan el techo' : 'todos respetan el techo de −1 dBTP'}`);
+  });
+
+  await run('Recomendaciones', async () => {
+    const lim = master(sine(60, 1.8, SR, N), SR, { ...DEFAULTS, drive: 6, ceiling: -1 }).stats.lim, neutro = master(sine(440, 0.3, SR, N), SR).stats;
+    row(lim.max > 3 && neutro.lim.max < 0.01 && neutro.comp.max === 0, 'Medidor de reducción', `limitador forzado: reducción máxima ${lim.max.toFixed(1)} dB; en neutro: ${neutro.lim.max.toFixed(2)} dB`);
+    const ana = { lufs: -10, truePeakDb: 0.5, samplePeakDb: -0.1, crestDb: 9, clip: { runs: 0, samples: 0 }, spec: null, stereo: null };
+    const ids = (o) => advise(o).map((r) => r.id).join(',');
+    const a = ids({ ana, p: {}, isOrig: true }), b = ids({ ana, stats: { comp: { mean: 5, max: 10, std: 2 }, lim: { mean: 0, max: 0, std: 0 } }, p: {}, isOrig: false });
+    row(a.includes('tp') && a.includes('loud') && !a.includes('comppump') && b.includes('comppump'), 'Reglas', `pico real alto y tema fuerte detectados (${a}); compresor trabajando de más detectado como bombeo (${b.includes('comppump') ? 'sí' : 'no'})`);
   });
 
   await run('Dispositivos', async () => {

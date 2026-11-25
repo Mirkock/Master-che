@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASTER CHE: autotest</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>MASTER CHE</h1>
+  <small>Autotest del navegador</small>
+  <a href="index.html">Volver</a>
+</header>
+<main>
+  <p>Estas pruebas usan señales generadas por la propia página y comprueban que tu navegador no altera el audio. Corrélas en Chrome y en Brave y mirá si hay diferencias.</p>
+  <button id="run" type="button">Correr pruebas</button>
+  <ul id="out"></ul>
+</main>
+<script type="module" src="js/selftest.js"></script>
+</body>
+</html>

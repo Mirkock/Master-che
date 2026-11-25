@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASTER CHE</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>MASTER CHE</h1>
+  <small>Etapa 1: base y diagnóstico</small>
+  <a href="selftest.html">Autotest</a>
+</header>
+<main id="drop">
+  <section>
+    <label class="btn">Cargar canción (WAV o MP3)
+      <input id="file" type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" hidden>
+    </label>
+    <span id="name">o arrastrá el archivo hasta acá</span>
+  </section>
+  <section id="player" hidden>
+    <button id="play" type="button">Reproducir</button>
+    <span id="time">0:00 / 0:00</span>
+    <div id="wavebox"><canvas id="wave"></canvas><div id="head"></div></div>
+    <dl id="info"></dl>
+  </section>
+  <details>
+    <summary>¿Qué significan estos números?</summary>
+    <p><b>dBFS</b>: escala del audio digital. 0 dBFS es el máximo posible; cuanto más negativo, más bajo suena. Por ejemplo, −6 dBFS es la mitad de amplitud.</p>
+    <p><b>Pico</b>: la muestra más alta de la canción. Cerca de 0 deja poco margen para procesar.</p>
+    <p><b>RMS</b>: nivel medio de toda la canción. Se parece a "qué tan fuerte suena en promedio".</p>
+    <p><b>Muestras en el tope</b>: cuántas muestras tocan el máximo. Si son muchas, es probable que haya clipping (recorte, distorsión digital).</p>
+    <p>Tu archivo original nunca se modifica: todo ocurre en la memoria del navegador.</p>
+  </details>
+</main>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

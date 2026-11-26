@@ -4,7 +4,7 @@ import { truePeak } from './analyzer.js';
 
 export const DEFAULTS = { lowF: 80, lowG: 0, lmF: 300, lmG: 0, hmF: 3000, hmG: 0, highF: 10000, highG: 0,
   thr: -18, ratio: 1, attack: 30, release: 200, knee: 6, makeup: 0, drive: 0, ceiling: -1, limRelease: 100,
-  satDrive: 0, satMix: 100, excAmt: 0, excF: 4000, width: 100, bassMono: 0 };
+  satDrive: 0, satMix: 50, excAmt: 0, excF: 4000, width: 100, bassMono: 0 };
 
 // Coeficientes de biquad (fórmulas RBJ). type: 'low' | 'high' (shelf), 'peak'.
 export function biquad(type, fs, f, g, q) {

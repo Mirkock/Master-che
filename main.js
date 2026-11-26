@@ -99,7 +99,7 @@ function drawWave() {
   const w = (cv.width = cv.clientWidth * r), h = (cv.height = cv.clientHeight * r);
   const g = cv.getContext('2d'), step = chs[0].length / w;
   g.fillStyle = css('--bg2'); g.fillRect(0, 0, w, h);
-  g.fillStyle = css('--accent');
+  const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, css('--accent')); gr.addColorStop(0.5, css('--cyan')); gr.addColorStop(1, css('--accent2')); g.fillStyle = gr;
   for (let x = 0; x < w; x++) {
     let mn = 0, mx = 0;
     const a = Math.floor(x * step), b = Math.max(a + 1, Math.floor((x + 1) * step));
@@ -178,3 +178,14 @@ const drop = $('drop');
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
 drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+
+// Modo sencillo / avanzado (se recuerda entre visitas). El sencillo oculta los controles detallados.
+const modeBtn = $('mode');
+const setMode = (v) => {
+  document.body.dataset.mode = v;
+  modeBtn.textContent = v === 'simple' ? 'Modo sencillo · pasar a avanzado' : 'Modo avanzado · pasar a sencillo';
+  try { localStorage.setItem('masterche.mode', v); } catch {}
+};
+let saved = 'simple'; try { saved = localStorage.getItem('masterche.mode') || 'simple'; } catch {}
+setMode(saved === 'adv' ? 'adv' : 'simple');
+modeBtn.addEventListener('click', () => setMode(document.body.dataset.mode === 'simple' ? 'adv' : 'simple'));

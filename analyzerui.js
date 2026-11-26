@@ -60,7 +60,8 @@ export function renderAnalysis(a, root) {
   if (a.spec) {
     add('h3', 'Espectro promedio (bandas de 1/3 de octava)');
     const [g, W, H] = canvas(170), b = a.spec.bands, bw = (W - 10) / b.length;
-    b.forEach((x, i) => { const h = ((Math.max(x.db, -60) + 60) / 60) * (H - 22); g.fillStyle = css('--accent'); g.fillRect(5 + i * bw, H - 16 - h, bw - 2, h); });
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, css('--accent2')); gr.addColorStop(0.5, css('--cyan')); gr.addColorStop(1, css('--accent'));
+    b.forEach((x, i) => { const h = ((Math.max(x.db, -60) + 60) / 60) * (H - 22); g.fillStyle = gr; g.fillRect(5 + i * bw, H - 16 - h, bw - 2, h); });
     g.fillStyle = css('--muted');
     b.forEach((x, i) => { if (i % 4 === 1) g.fillText(hz(x.fc), 5 + i * bw, H - 3); });
     add('small', 'Niveles relativos a la banda más fuerte (0 dB arriba, −60 dB abajo). Mide la mezcla mono; con pocos bajos profundos las bandas más graves tienen menos resolución.', 'hint');

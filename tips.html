@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MASTER CHE: Tips</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-mode="adv">
+<header>
+  <h1>MASTER CHE</h1>
+  <small>Tips: qué tocar cuando algo suena mal</small>
+  <a href="index.html">Volver al estudio</a>
+</header>
+<main class="tips">
+  <section>
+    <h2>Cómo trabajar, paso a paso</h2>
+    <ol>
+      <li>Cargá tu canción en <b>WAV</b>. Si la exportás de BandLab, desactivá su mastering automático y dejá margen (que el pico no llegue al máximo).</li>
+      <li>Mirá el <b>Análisis</b> (modo avanzado) o las <b>Recomendaciones</b>: te dicen si hay recorte, pico real alto o poca compatibilidad mono.</li>
+      <li>Elegí un <b>preset</b> parecido a tu estilo y apretá <b>Procesar</b>. Se guarda una versión (V1, V2…).</li>
+      <li>Compará <b>Original</b> contra la versión, siempre con <b>Igualar volumen</b> tildado. Alterná varias veces en el mismo tramo.</li>
+      <li>Probá los <b>dispositivos</b>, sobre todo celular, Bluetooth y Mono. Ahí se ve si algo se cae.</li>
+      <li>Si algo no te gusta, tocá <b>una sola cosa</b>, procesá de nuevo y comparalo contra la versión anterior.</li>
+      <li>Cuando estés conforme, exportá en WAV (o MP3 si lo necesitás).</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Reglas de oro</h2>
+    <ul>
+      <li><b>Cambios chicos.</b> 1 o 2 dB alcanzan. Si necesitás 6 dB, el problema suele estar en la mezcla, no en el master.</li>
+      <li><b>De a una cosa por vez.</b> Si cambiás cinco controles juntos no vas a saber cuál ayudó.</li>
+      <li><b>Volumen igualado siempre.</b> Lo más fuerte parece mejor aunque no lo sea.</li>
+      <li><b>Descansá los oídos.</b> Después de 30 minutos tu criterio baja. Volvé al otro día.</li>
+      <li><b>Probá en otros equipos:</b> celular, auto, parlante. Si se traduce ahí, está bien.</li>
+      <li><b>Que no te gane el volumen.</b> En Spotify y YouTube un tema muy fuerte se baja solo.</li>
+      <li><b>Si el master suena peor que el original,</b> volvé al preset "Limpio" y agregá cambios de a uno.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Si suena así… probá esto</h2>
+    <p class="hint">Los nombres de los controles son los que ves en la sección Mastering. Son guías generales: no miden tu canción. Para ubicar una frecuencia exacta usá el <b>Buscador de frecuencias</b>.</p>
+
+    <details open><summary>Se oyen "olas": el volumen sube y baja con los golpes (bombeo)</summary>
+      <p><b>Qué pasa:</b> el compresor o el limitador reaccionan a los golpes fuertes (sobre todo al 808 o al bombo), bajan todo el volumen y después lo sueltan despacio.</p>
+      <ol>
+        <li>Mirá la tabla <b>Antes y después</b>: filas "Compresor/Limitador: reducción media / máx.". Más de 3 dB de media es mucho.</li>
+        <li>Poné el <b>Ratio</b> del compresor en <b>1</b> (lo apaga). Si las olas desaparecen, era el compresor; si siguen, es el limitador.</li>
+        <li>Compresor: subí el <b>Threshold</b> (más cerca de 0), bajá el <b>Ratio</b> (1,5 a 2) y subí el <b>Release</b> (250 ms o más).</li>
+        <li>Limitador: bajá la <b>Ganancia de entrada</b> 2 o 3 dB (puede ser negativa) y subí el <b>Release</b> a 150 ms o más.</li>
+        <li>Si sigue, bajá 1 o 2 dB los <b>Graves: ganancia</b>: son los que disparan la reducción.</li>
+      </ol>
+    </details>
+    <details><summary>Suena turbio, tapado, "de cajón"</summary>
+      <p><b>Zona:</b> 200–500 Hz. Se acumulan bajo, voz y sintes.</p>
+      <p><b>Probá:</b> <b>Medios-bajos</b> a ~300 Hz, ganancia −1,5 a −3 dB. Con el Buscador de frecuencias en "Realzar" encontrás dónde molesta más.</p>
+    </details>
+    <details><summary>La voz está lejos, enterrada o no se entiende</summary>
+      <p><b>Zona:</b> 2–5 kHz.</p>
+      <p><b>Probá:</b> <b>Medios-altos</b> a ~3 kHz, +1 a +2 dB. Si a pesar de eso no aparece, el nivel de la voz se corrige en BandLab (subir el volumen de la pista o comprimirla), no en el master.</p>
+    </details>
+    <details><summary>Suena áspero, chillón o con "s" que lastiman</summary>
+      <p><b>Zona:</b> 3–8 kHz.</p>
+      <p><b>Probá:</b> bajar <b>Medios-altos</b> o <b>Agudos</b> 1 a 2 dB, bajar el <b>Exciter</b> y la <b>Saturación</b>. Con el Buscador, subí la frecuencia despacio y fijate dónde se vuelve más molesto.</p>
+    </details>
+    <details><summary>Está opaco, sin brillo</summary>
+      <p><b>Zona:</b> más de 8 kHz.</p>
+      <p><b>Probá:</b> <b>Agudos: ganancia</b> +1 a +2 dB (frecuencia 10000 Hz) o un poco de <b>Exciter</b> (10 a 20 %).</p>
+    </details>
+    <details><summary>Los graves están flojos</summary>
+      <p><b>Zona:</b> 50–100 Hz.</p>
+      <p><b>Probá:</b> <b>Graves: ganancia</b> +1 a +2 dB. Ojo: en el celular casi no se oyen por debajo de ~300 Hz; ahí ayuda más la <b>Saturación</b> suave (3–4 dB, mezcla 30–40 %), que agrega armónicos.</p>
+    </details>
+    <details><summary>Los graves retumban, son borrosos o tapan todo</summary>
+      <p><b>Zona:</b> 60–150 Hz.</p>
+      <p><b>Probá:</b> <b>Graves: ganancia</b> −1 a −2 dB, <b>Graves en mono hasta</b> 100–120 Hz, y menos <b>Saturación</b>.</p>
+    </details>
+    <details><summary>Suena aplastado, sin vida, cansa</summary>
+      <p><b>Qué pasa:</b> demasiada compresión, saturación o limitación: se perdió la diferencia entre partes suaves y fuertes.</p>
+      <p><b>Probá:</b> bajar la <b>Ganancia de entrada al limitador</b>, el <b>Ratio</b> y la <b>Saturación</b>. Mirá el factor de cresta y el PLR en la tabla: si el master tiene menos que el original, quitaste dinámica.</p>
+    </details>
+    <details><summary>Suena sucio o distorsionado</summary>
+      <p><b>Qué pasa:</b> saturación o limitador forzados, o recorte que ya venía en el original.</p>
+      <p><b>Probá:</b> bajar <b>Saturación: cantidad</b> y <b>Ganancia de entrada</b>. Revisá "Muestras en el tope" y "Tramos de clipping" en el análisis: si el original ya viene recortado, no se arregla en el master.</p>
+    </details>
+    <details><summary>En el celular o el parlante chico se pierde el bajo</summary>
+      <p><b>Qué pasa:</b> esos equipos no reproducen por debajo de ~100–300 Hz. Lo que está ahí no se oye.</p>
+      <p><b>Probá:</b> escuchar con el simulador de <b>Celular</b>. Si el bajo desaparece, agregá <b>Saturación</b> suave para que se generen armónicos audibles, o revisá que el 808 tenga contenido por encima de 100 Hz.</p>
+    </details>
+    <details><summary>Algo desaparece en mono o el estéreo se siente raro</summary>
+      <p><b>Qué pasa:</b> hay contenido en oposición de fase entre izquierda y derecha: al sumar los canales se cancela.</p>
+      <p><b>Probá:</b> escuchar con el dispositivo <b>Mono</b>. Bajar el <b>Ancho</b> a 100 % o menos y usar <b>Graves en mono hasta</b> 120 Hz. Si el problema está en un efecto ancho de la mezcla (por ejemplo un chorus o un reverb estéreo), conviene corregirlo en BandLab.</p>
+    </details>
+    <details><summary>Suena muy bajo comparado con otros temas</summary>
+      <p><b>Probá:</b> subir la <b>Ganancia de entrada al limitador</b> de a 1 dB y comparar con volumen igualado. Ojo con las olas y con perder dinámica. Un tema "más bajo" no suena peor en Spotify o YouTube: ahí se normaliza todo.</p>
+    </details>
+    <details><summary>Suena muy fuerte y las plataformas lo van a bajar</summary>
+      <p><b>Qué pasa:</b> si pasa de −14 LUFS aproximadamente, Spotify (modo Normal) y YouTube lo bajan. Ese volumen extra no llega al oyente.</p>
+      <p><b>Probá:</b> bajar la <b>Ganancia de entrada al limitador</b> y dejar el <b>Techo</b> en −2 dBTP. Es una decisión de estilo: en trap muchos temas van fuertes a propósito.</p>
+    </details>
+    <details><summary>El master suena distinto pero no sé si mejor</summary>
+      <p>Casi siempre es una diferencia de volumen. Tildá <b>Igualar volumen</b>, alterná entre Original y la versión en el mismo tramo y preguntate una sola cosa por vez: ¿se entiende más la voz?, ¿se siente más limpio?, ¿tiene más pegada?</p>
+    </details>
+    <details><summary>Quiero ubicar qué frecuencia molesta</summary>
+      <p>Activá el <b>Buscador de frecuencias</b> en "Realzar (+9 dB)" con la canción sonando. Mové la frecuencia despacio: donde se vuelva más desagradable (turbio, nasal, áspero) está la zona. Apretá el botón <b>Cortar…</b> y se ajusta la banda del ecualizador. Con "Solo esta zona" oís únicamente esa franja.</p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Mapa rápido de frecuencias</h2>
+    <div class="scroll"><table class="cmp">
+      <tr><th>Zona</th><th>Cómo se la conoce</th><th>Qué se oye</th><th>Control</th></tr>
+      <tr><td>20–60 Hz</td><td>Subgraves</td><td>Peso, vibración; no sale en parlantes chicos</td><td>Graves: ganancia / Graves en mono</td></tr>
+      <tr><td>60–250 Hz</td><td>Graves</td><td>Cuerpo del bajo y del bombo</td><td>Graves: ganancia</td></tr>
+      <tr><td>250–500 Hz</td><td>Medios-bajos</td><td>"Barro" o calidez</td><td>Medios-bajos</td></tr>
+      <tr><td>500 Hz–2 kHz</td><td>Medios</td><td>Cuerpo de voz e instrumentos; si sobra suena nasal</td><td>Medios-bajos / Medios-altos</td></tr>
+      <tr><td>2–6 kHz</td><td>Presencia</td><td>Claridad y ataque de la voz; si sobra, áspero</td><td>Medios-altos</td></tr>
+      <tr><td>6–20 kHz</td><td>Agudos / aire</td><td>Brillo, hi-hats, "s"</td><td>Agudos / Exciter</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Glosario</h2>
+    <dl class="gloss">
+      <dt>dBFS</dt><dd>Escala del audio digital. 0 es el máximo; más negativo, más bajo.</dd>
+      <dt>LUFS</dt><dd>Volumen percibido promedio. Es lo que usan las plataformas para normalizar.</dd>
+      <dt>True peak (dBTP)</dt><dd>Pico real de la onda, que puede superar al de las muestras. Si pasa de 0 puede distorsionar al convertir a MP3.</dd>
+      <dt>RMS / factor de cresta / PLR</dt><dd>Nivel medio y su diferencia con el pico: indican cuánta dinámica queda. Más bajo = más comprimido.</dd>
+      <dt>LRA</dt><dd>Cuánto varía el volumen entre partes suaves y fuertes.</dd>
+      <dt>Threshold, ratio, attack, release, knee</dt><dd>Del compresor: desde qué nivel actúa, cuánto reduce, qué tan rápido reacciona, qué tan rápido suelta y qué tan suave entra.</dd>
+      <dt>Limitador / techo</dt><dd>Impide que el pico pase un máximo (el techo). La ganancia de entrada lo hace trabajar más (más fuerte) o menos.</dd>
+      <dt>Saturación / exciter</dt><dd>Agregan armónicos: redondean y densifican (saturación) o dan brillo (exciter).</dd>
+      <dt>Correlación y pérdida a mono</dt><dd>Cuánto se parecen izquierda y derecha, y cuánto volumen se pierde al sumarlos.</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Plataformas (verificado en noviembre de 2026)</h2>
+    <ul>
+      <li><b>Spotify:</b> normaliza a −14 LUFS en el modo Normal. Si tu master pasa de eso, recomienda dejar el techo en −2 dBTP. No normaliza en la web ni en algunos dispositivos de terceros.</li>
+      <li><b>YouTube:</b> baja los temas que superan aproximadamente −14 LUFS y no sube los más bajos.</li>
+      <li><b>SoundCloud:</b> su ayuda oficial dice que normaliza, pero no encontré el nivel exacto. No lo asumo.</li>
+      <li>Estas reglas pueden cambiar con el tiempo. Revisá las páginas oficiales de cada plataforma.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Cómo activar la exportación a MP3</h2>
+    <p>El MP3 usa una librería gratuita que va aparte. Es un paso de una sola vez:</p>
+    <ol>
+      <li>Abrí <a href="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js" target="_blank" rel="noopener">este enlace</a> y guardá la página como archivo con el nombre <b>lame.min.js</b> (Ctrl + S, y elegí "Todos los archivos" si te lo pide).</li>
+      <li>En tu repositorio de GitHub: <b>Add file → Upload files</b>, subí <b>lame.min.js</b> junto a los demás archivos y hacé <b>Commit changes</b>.</li>
+      <li>El autotest te avisa si el archivo está. Después ya podés elegir MP3 al exportar.</li>
+    </ol>
+    <p class="hint">El MP3 admite 32, 44,1 y 48 kHz. Para otras frecuencias, exportá en WAV. Dejá el techo en −1 o −2 dBTP porque el MP3 puede agregar picos.</p>
+  </section>
+</main>
+</body>
+</html>

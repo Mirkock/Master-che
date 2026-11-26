@@ -3,6 +3,7 @@ import { PRESETS } from './presets.js';
 import { DEVICES, deviceStages } from './devices.js';
 import { analyze, loudness } from './analyzer.js';
 import { advise } from './advisor.js';
+import { encodeMp3 } from './mp3.js';
 import { encodeWav } from './wav.js';
 
 // [clave, etiqueta, mín, máx, paso, unidad, ayuda]
@@ -26,7 +27,7 @@ const GROUPS = [
     ['makeup', 'Ganancia de compensación', 0, 12, 0.5, 'dB', 'Sube el volumen después de comprimir.'],
   ]],
   ['Limitador y nivel de salida', [
-    ['drive', 'Ganancia de entrada al limitador', 0, 12, 0.5, 'dB', 'Más ganancia = más fuerte, pero con más limitación y menos dinámica.'],
+    ['drive', 'Ganancia de entrada al limitador', -12, 12, 0.5, 'dB', 'Positivo: más fuerte, pero con más limitación y menos dinámica. Negativo: baja el volumen general.'],
     ['ceiling', 'Techo (ceiling)', -3, 0, 0.1, 'dBTP', 'El pico real máximo permitido. −1 deja margen de seguridad para MP3 y streaming.'],
     ['limRelease', 'Release del limitador', 10, 500, 5, 'ms', 'Muy corto puede distorsionar los graves.'],
   ]],
@@ -69,7 +70,7 @@ export function initMastering(api) {
     pre.value = sel;
     pre.addEventListener('change', () => { sel = pre.value; if (sel) Object.assign(P, DEFAULTS, clean(find(sel).p)); build(); });
     const f = sel && find(sel); mk('small', f ? f.why || 'Preset propio.' : 'Ajustá los controles a gusto y guardalos como preset propio.', 'hint');
-    const bar2 = mk('div', '', 'bar2'), isU = sel.startsWith('u:'), uname = sel.slice(2);
+    const bar2 = mk('div', '', 'bar2 adv'), isU = sel.startsWith('u:'), uname = sel.slice(2);
     const btn = (t, fn, on = true) => { const b = mk('button', t, 'sec', bar2); b.type = 'button'; b.disabled = !on; b.addEventListener('click', fn); };
     const put = (name, p, old) => { const a = store.load().filter((u) => u.name !== name && u.name !== old); a.push({ name, p }); return store.save(a); };
     const ask = (msg, def) => (prompt(msg, def) || '').trim();
@@ -101,9 +102,9 @@ export function initMastering(api) {
     presetBar();
     mk('small', 'Con todo en su valor inicial la canción solo pasa por el limitador. Elegí un preset o ajustá a mano y apretá "Procesar". Cada vez que procesás se guarda una versión nueva para comparar (arriba, en "Escuchar y comparar").', 'hint');
     for (const [title, rows] of GROUPS) {
-      mk('h3', title);
+      const grp = mk('div', '', 'adv'); mk('h3', title, '', grp);
       for (const [k, label, min, max, step, unit, hint] of rows) {
-        const row = mk('div', '', 'ctl'), lab = mk('label', label, '', row), inp = mk('input', '', '', row), val = mk('b', '', '', row);
+        const row = mk('div', '', 'ctl', grp), lab = mk('label', label, '', row), inp = mk('input', '', '', row), val = mk('b', '', '', row);
         Object.assign(inp, { type: 'range', min, max, step, value: P[k] }); inp.title = hint; lab.title = hint;
         const show = () => (val.textContent = `${(+inp.value).toFixed(step < 1 ? 1 : 0)} ${unit}`);
         inp.addEventListener('input', () => { P[k] = +inp.value; show(); status.textContent = 'Hay cambios sin procesar.'; }); show();
@@ -182,18 +183,24 @@ export function initMastering(api) {
     const curV = versions.find((x) => x.id === cur), curAna = curV ? curV.ana : o, curName = curV ? curV.label : 'el original';
     mc('h3', `Recomendaciones para ${curName}`);
     mc('small', 'Salen de mediciones de esta versión. Son orientativas: dependen de tu estilo y de tu gusto, y no hay ninguna que se aplique sola. Si algo no te suena mal, no hace falta tocarlo.', 'hint');
-    const recs = advise({ ana: curAna, stats: curV?.stats, p: curV ? curV.p : { ...P }, isOrig: !curV, devices: devCache[cur] });
-    if (!recs.length) mc('p', 'No se detectó nada llamativo con estas reglas. Eso no garantiza que suene bien: confiá también en tu oído.', 'rec info');
-    for (const r of recs) {
+    const recs = advise({ ana: curAna, orig: o, stats: curV?.stats, p: curV ? curV.p : { ...P }, isOrig: !curV, devices: devCache[cur] });
+    const warns = recs.filter((r) => r.kind === 'warn'), notes = recs.filter((r) => r.kind === 'note');
+    if (!warns.length) mc('p', 'No se detectó ningún problema medible con estas reglas. Eso no garantiza que suene bien: confiá también en tu oído.', 'rec info');
+    const lines = (r, d) => { for (const [k, v] of [['Qué se midió', r.found], ['Dónde se nota', r.where], ['Por qué pasa', r.why], ['Qué probar', r.fix]]) { const p = mc('p', '', '', d); mc('span', k + ': ', 'k', p); p.append(v); } };
+    for (const r of warns) {
       const d = mc('div', '', 'rec ' + r.sev);
-      mc('b', (r.sev === 'warn' ? 'Atención: ' : 'Ojo: ') + r.title, '', d);
-      for (const [k, v] of [['Qué se midió', r.found], ['Dónde se nota', r.where], ['Por qué pasa', r.why], ['Qué probar', r.fix]]) { const p = mc('p', '', '', d); mc('span', k + ': ', 'k', p); p.append(v); }
+      mc('b', (r.sev === 'warn' ? 'Atención: ' : 'Ojo: ') + r.title, '', d); lines(r, d);
       if (r.apply) {
         const ap = mc('button', 'Aplicar en el estudio', 'sec', d); ap.type = 'button'; const msg = mc('small', '', 'hint', d);
-        ap.addEventListener('click', () => { Object.assign(P, DEFAULTS, clean({ ...(curV ? curV.p : P), ...r.apply })); sel = ''; build(); msg.textContent = 'Listo: se ajustaron los controles (más abajo, en Mastering). Apretá "Procesar" para escuchar el resultado y compararlo.'; });
+        ap.addEventListener('click', () => { Object.assign(P, DEFAULTS, clean({ ...(curV ? curV.p : P), ...r.apply })); sel = ''; build(); msg.textContent = 'Listo: se ajustaron los controles (más abajo, en Mastering). Apretá "Procesar", compará con volumen igualado y quedate con la versión que mejor suene.'; });
       }
     }
-    const mrow = mc('div', '', 'bar2'), mb = mc('button', devCache[cur] ? 'Volver a medir en dispositivos' : 'Medir en todos los dispositivos', 'sec', mrow), mst = mc('small', '', 'hint', mrow); mb.type = 'button';
+    if (notes.length) {
+      const nd = mc('details', '', 'guide'); mc('summary', `Observaciones sobre el tono (${notes.length}): no son errores, dependen del estilo`, '', nd);
+      for (const r of notes) { const d = mc('div', '', 'rec note', nd); mc('b', r.title, '', d); lines(r, d); }
+    }
+    const advC = mc('div', '', 'adv');
+    const mrow = mc('div', '', 'bar2', advC), mb = mc('button', devCache[cur] ? 'Volver a medir en dispositivos' : 'Medir en todos los dispositivos', 'sec', mrow), mst = mc('small', '', 'hint', mrow); mb.type = 'button';
     mb.disabled = measuring;
     mb.addEventListener('click', async () => {
       measuring = true; mb.disabled = true;
@@ -202,25 +209,12 @@ export function initMastering(api) {
       measuring = false; renderCompare();
     });
     if (devCache[cur]) {
-      const t = mc('table', '', 'cmp'), h = mc('tr', '', '', t);
+      const t = mc('table', '', 'cmp', advC), h = mc('tr', '', '', t);
       for (const x of ['Dispositivo', 'Volumen percibido', 'Cambio vs. directo']) mc('th', x, '', h);
       for (const x of devCache[cur]) { const r = mc('tr', '', '', t); mc('td', x.name, '', r); mc('td', f1(x.lufs) + ' LUFS', '', r); mc('td', x.id === 'ref' ? '—' : (x.delta > 0 ? '+' : '') + f1(x.delta) + ' dB', '', r); }
-      mc('small', 'Mide cuánto del volumen percibido se conserva en cada perfil. Una caída grande en el celular o el Bluetooth indica que mucha energía está en graves que esos equipos no reproducen. Son perfiles aproximados.', 'hint');
+      mc('small', 'Mide cuánto del volumen percibido se conserva en cada perfil. Una caída grande en el celular o el Bluetooth indica que mucha energía está en graves que esos equipos no reproducen. Son perfiles aproximados.', 'hint', advC);
     }
-    const gd = mc('details', '', 'guide'); mc('summary', 'Guía: cuando algo suena mal, ¿qué toco?', '', gd);
-    for (const [s1, s2] of [
-      ['Suena turbio, tapado o "de cajón"', 'Zona 200–500 Hz. Bajá los medios-bajos 1,5 a 3 dB.'],
-      ['La voz está lejos o enterrada', 'Zona 2–5 kHz. Subí los medios-altos 1 a 2 dB. Si sigue, probablemente el nivel de la voz se arregla en BandLab, no en el master.'],
-      ['Áspero, molesto o con silbidos en las "s"', 'Zona 3–8 kHz. Bajá los medios-altos o los agudos 1 a 2 dB y bajá el exciter.'],
-      ['Sin brillo, opaco', 'Más de 8 kHz. Subí los agudos 1 a 2 dB.'],
-      ['Graves flojos', 'Zona 50–100 Hz. Subí los graves 1 a 2 dB (y probá en el simulador de celular: ahí casi no se oyen).'],
-      ['Graves exagerados o borrosos', 'Zona 60–150 Hz. Bajá los graves 1 a 2 dB o la saturación.'],
-      ['Aplastado, sin vida', 'Compresión y limitación de más. Bajá la ganancia de entrada al limitador y el ratio.'],
-      ['Se oyen "olas": el volumen sube y baja con los golpes', 'Es el compresor o el limitador reaccionando a los graves fuertes (bombeo). Mirá en la tabla cuánta reducción hacen, bajá la ganancia de entrada al limitador, subí los release, subí el threshold del compresor o probá con ratio 1 para aislar al culpable.'],
-      ['Sucio o distorsionado', 'Saturación o limitador forzados, o recorte que ya venía en el original. Bajá la saturación y la ganancia de entrada; revisá "Muestras en el tope" en el análisis.'],
-      ['Se pierde algo en celular o en mono', 'Probá el dispositivo "Mono" y el de celular. Pasá los graves a mono y bajá el ancho estéreo.'],
-    ]) { const p = mc('p', '', '', gd); mc('b', s1 + ': ', '', p); p.append(s2); }
-    mc('small', 'Guía general basada en cómo suelen comportarse estas zonas de frecuencia: no es una medición de tu canción. Para ubicar la zona exacta, usá el Buscador de frecuencias.', 'hint', gd);
+    const tl = mc('a', 'Tips: ¿qué toco cuando algo suena mal? (abre una página con casos y soluciones)', 'tipslink'); tl.href = 'tips.html'; tl.target = '_blank'; tl.rel = 'noopener';
 
     mc('h3', 'Simular un dispositivo');
     const drow = mc('div', '', 'bar2'), ds = mc('select', '', '', drow);
@@ -229,9 +223,10 @@ export function initMastering(api) {
     ds.addEventListener('change', () => { devId = ds.value; api.setDevice(devId); dn.textContent = DEVICES.find((d) => d.id === devId).note; });
     mc('small', 'Son perfiles aproximados, no mediciones de modelos concretos. La simulación solo cambia lo que escuchás: no modifica el original ni lo que exportás. Podés cambiar de versión o de dispositivo mientras suena.', 'hint');
 
-    mc('h3', 'Buscador de frecuencias (para encontrar qué suena mal)');
-    mc('small', 'Con la canción sonando: activalo en "Realzar" y mové la frecuencia. Donde el sonido se vuelva más molesto (turbio, áspero, nasal) suele estar el problema. "Solo esta zona" te deja oír únicamente esa franja. Cuando la encuentres, usá el botón para cortarla en el ecualizador. Esto es solo para escuchar y no se exporta.', 'hint');
-    const prow = mc('div', '', 'bar2'), pOn = mc('button', probe.on ? 'Desactivar' : 'Activar', probe.on ? '' : 'sec', prow), pm = mc('select', '', '', prow);
+    const advA = mc('div', '', 'adv');
+    mc('h3', 'Buscador de frecuencias (para encontrar qué suena mal)', '', advA);
+    mc('small', 'Con la canción sonando: activalo en "Realzar" y mové la frecuencia. Donde el sonido se vuelva más molesto (turbio, áspero, nasal) suele estar el problema. "Solo esta zona" te deja oír únicamente esa franja. Cuando la encuentres, usá el botón para cortarla en el ecualizador. Esto es solo para escuchar y no se exporta.', 'hint', advA);
+    const prow = mc('div', '', 'bar2', advA), pOn = mc('button', probe.on ? 'Desactivar' : 'Activar', probe.on ? '' : 'sec', prow), pm = mc('select', '', '', prow);
     pOn.type = 'button';
     for (const [v, t] of [['boost', 'Realzar (+9 dB)'], ['solo', 'Solo esta zona']]) mc('option', t, '', pm).value = v;
     pm.value = probe.mode;
@@ -240,7 +235,7 @@ export function initMastering(api) {
     const toHz = (x) => Math.round(40 * 400 ** (x / 1000)), toX = (f) => (1000 * Math.log(f / 40)) / Math.log(400);
     const band = () => { const f = probe.hz; return f < 100 ? ['lowF', 'lowG', 'Graves'] : f <= 1000 ? ['lmF', 'lmG', 'Medios-bajos'] : f <= 8000 ? ['hmF', 'hmG', 'Medios-altos'] : ['highF', 'highG', 'Agudos']; };
     const refresh = () => { hzLab.textContent = probe.hz >= 1000 ? (probe.hz / 1000).toFixed(2) + ' kHz' : probe.hz + ' Hz'; cut.textContent = `Cortar ${hzLab.textContent} (−3 dB) en "${band()[2]}"`; };
-    const cutMsg = mc('small', '', 'hint'); sl.value = toX(probe.hz); refresh();
+    const cutMsg = mc('small', '', 'hint', advA); sl.value = toX(probe.hz); refresh();
     pOn.addEventListener('click', () => { probe.on = !probe.on; api.setProbe({ on: probe.on, mode: probe.mode, f: probe.hz }); renderCompare(); });
     pm.addEventListener('change', () => { probe.mode = pm.value; api.setProbe({ mode: probe.mode }); });
     sl.addEventListener('input', () => { probe.hz = toHz(+sl.value); api.setProbe({ f: probe.hz }); refresh(); });
@@ -249,8 +244,8 @@ export function initMastering(api) {
       cutMsg.textContent = `Listo: se ajustó "${band()[2]}" a ${probe.hz} Hz con −3 dB en el ecualizador (más abajo, en Mastering). Apretá "Procesar" para escuchar el resultado.`;
     });
 
-    mc('h3', 'Antes y después');
-    const wrap = mc('div', '', 'scroll'), t = mc('table', '', 'cmp', wrap), r0 = mc('tr', '', '', t);
+    const advB = mc('div', '', 'adv'); mc('h3', 'Antes y después', '', advB);
+    const wrap = mc('div', '', 'scroll', advB), t = mc('table', '', 'cmp', wrap), r0 = mc('tr', '', '', t);
     const cols = [['Original', o], ...versions.map((v) => ['V' + v.n, v.ana])];
     for (const h of ['', ...cols.map((c) => c[0])]) mc('th', h, '', r0);
     for (const [name, key, u, dd] of [['LUFS integrado', 'lufs', ' LUFS', 1], ['True peak', 'truePeakDb', ' dBTP', 2], ['Pico de muestra', 'samplePeakDb', ' dBFS', 2], ['RMS', 'rmsDb', ' dBFS', 1], ['Factor de cresta', 'crestDb', ' dB', 1], ['Rango de volumen (LRA)', 'lra', ' LU', 1]]) {
@@ -266,13 +261,20 @@ export function initMastering(api) {
       const ex = mc('div', '', 'bar2'), vs = mc('select', '', '', ex), fs = mc('select', '', '', ex);
       for (const v of versions) mc('option', v.label, '', vs).value = v.id;
       vs.value = cur !== 'orig' ? cur : versions[versions.length - 1].id;
-      for (const [v, l] of [[24, 'WAV 24 bits'], [16, 'WAV 16 bits (con dither)'], [32, 'WAV 32 bits float']]) mc('option', l, '', fs).value = v;
+      for (const [v, l] of [[24, 'WAV 24 bits'], [16, 'WAV 16 bits (con dither)'], [32, 'WAV 32 bits float'], ['mp3-320', 'MP3 320 kbps'], ['mp3-192', 'MP3 192 kbps'], ['mp3-128', 'MP3 128 kbps']]) mc('option', l, '', fs).value = v;
       const dl = mc('button', 'Descargar', '', ex); dl.type = 'button';
-      mc('small', 'Se exporta la versión elegida a la misma frecuencia de muestreo del original, sin simulación de dispositivo. Con 16 bits se agrega dither; si el techo está en 0 dB eso puede rozar el máximo, por eso conviene dejar −1 dB.', 'hint');
-      dl.addEventListener('click', () => {
-        const v = versions.find((x) => x.id === vs.value), bits = +fs.value, a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([encodeWav(v.chs, api.getSr(), bits, bits === 16)], { type: 'audio/wav' }));
-        a.download = api.getName().replace(/\.[^.]+$/, '') + `_MasterChe_V${v.n}_${bits}${bits === 32 ? 'f' : ''}.wav`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      mc('small', 'Se exporta la versión elegida a la misma frecuencia de muestreo del original, sin simulación de dispositivo. Con 16 bits se agrega dither. El MP3 pierde calidad y puede generar picos algo más altos: dejá el techo en −1 o −2 dB. Para MP3 hace falta subir el archivo lame.min.js al repositorio (pasos en Tips).', 'hint');
+      const note = mc('small', '', 'hint', ex);
+      dl.addEventListener('click', async () => {
+        const v = versions.find((x) => x.id === vs.value), val = String(fs.value), a = document.createElement('a'), base = api.getName().replace(/\.[^.]+$/, '') + `_MasterChe_V${v.n}`;
+        let blob, name;
+        if (val.startsWith('mp3-')) {
+          dl.disabled = true;
+          try { blob = await encodeMp3(v.chs, api.getSr(), +val.slice(4), (p) => (note.textContent = `Codificando MP3… ${Math.round(p * 100)} %`)); note.textContent = 'Listo.'; }
+          catch (e) { note.textContent = e.message; dl.disabled = false; return; }
+          dl.disabled = false; name = `${base}_${val.slice(4)}k.mp3`;
+        } else { const bits = +val; blob = new Blob([encodeWav(v.chs, api.getSr(), bits, bits === 16)], { type: 'audio/wav' }); name = `${base}_${bits}${bits === 32 ? 'f' : ''}.wav`; }
+        a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
       });
     }
   }

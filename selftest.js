@@ -6,7 +6,7 @@ import { PRESETS } from './presets.js';
 import { DEVICES, deviceStages } from './devices.js';
 import { advise } from './advisor.js';
 
-const out = document.getElementById('out');
+const out = document.getElementById('out'), db20 = (v) => 20 * Math.log10(v);
 let fails = 0, warns = 0;
 const row = (ok, name, detail) => {
   const li = document.createElement('li');
@@ -86,6 +86,14 @@ async function main() {
     const ids = (o) => advise(o).map((r) => r.id).join(',');
     const a = ids({ ana, p: {}, isOrig: true }), b = ids({ ana, stats: { comp: { mean: 5, max: 10, std: 2 }, lim: { mean: 0, max: 0, std: 0 } }, p: {}, isOrig: false });
     row(a.includes('tp') && a.includes('loud') && !a.includes('comppump') && b.includes('comppump'), 'Reglas', `pico real alto y tema fuerte detectados (${a}); compresor trabajando de más detectado como bombeo (${b.includes('comppump') ? 'sí' : 'no'})`);
+  });
+
+  await run('MP3', async () => {
+    const r = await fetch('lame.min.js', { method: 'HEAD' }).catch(() => null);
+    row(r && r.ok ? true : null, 'Exportación MP3', r && r.ok ? 'lame.min.js está en el repositorio' : 'falta lame.min.js: sin ese archivo solo podés exportar WAV (pasos en la página de Tips)');
+    const half = master(sine(440, 0.5, SR, N), SR, { ...DEFAULTS, drive: -6, ceiling: 0 }).chs[0];
+    let pk = 0; for (let i = 0; i < N; i++) pk = Math.max(pk, Math.abs(half[i]));
+    row(Math.abs(db20(pk / 0.5) + 6) < 0.05, 'Ganancia negativa', `ganancia de entrada −6 dB: nivel medido ${db20(pk / 0.5).toFixed(2)} dB`);
   });
 
   await run('Dispositivos', async () => {

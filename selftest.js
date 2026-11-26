@@ -20,7 +20,12 @@ const noise = (n) => Array.from({ length: 2 }, (_, c) => Float32Array.from({ len
 const maxDiff = (A, B) => { let m = 0; A.forEach((d, c) => { for (let i = 0; i < d.length; i++) m = Math.max(m, Math.abs(d[i] - B[c][i])); }); return m; };
 const run = async (name, fn) => { try { await fn(); } catch (e) { row(false, name, 'error inesperado: ' + e.message); } };
 
-async function main() {
+let busy = false;
+async function main() { // evita que dos corridas se mezclen si se aprieta el botón mientras ya está corriendo
+  if (busy) return; busy = true;
+  try { await runAll(); } finally { busy = false; }
+}
+async function runAll() {
   out.replaceChildren(); fails = warns = 0;
   const N = 44100, SR = 44100;
 
@@ -66,7 +71,7 @@ async function main() {
     row(Math.abs(Math.abs(c[0][N >> 1]) - 0.149) < 0.005, 'Compresor', `onda cuadrada de 0,5, threshold −20 dB, ratio 4:1: esperado 0,149, medido ${Math.abs(c[0][N >> 1]).toFixed(3)}`);
     const loud = sine(60, 1.8, SR, N), r = master(loud, SR, { ...DEFAULTS, drive: 6, ceiling: -1 }), tp = truePeak(r.chs);
     row(db(tp.truePeak) <= -0.97, 'Limitador', `señal 15 dB por encima del máximo con techo −1: pico real medido ${db(tp.truePeak).toFixed(2)} dBTP`);
-    const st = sine(1000, 0.5, SR, N, 1), sa = master(st, SR, { ...DEFAULTS, satDrive: 12, ceiling: 0 }).chs[0];
+    const st = sine(1000, 0.5, SR, N, 1), sa = master(st, SR, { ...DEFAULTS, satDrive: 12, satMix: 100, ceiling: 0 }).chs[0];
     let pk = 0; for (let i = N >> 2; i < (3 * N) >> 2; i++) pk = Math.max(pk, Math.abs(sa[i]));
     row(Math.abs(pk - Math.tanh(0.5 * 10 ** 0.6) / 10 ** 0.6) < 0.005, 'Saturación', `curva tanh a +12 dB: pico esperado 0,242, medido ${pk.toFixed(3)}`);
     const wv = [Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.05)), Float32Array.from({ length: N }, (_, i) => 0.4 * Math.sin(i * 0.07))], w0 = master(wv, SR, { ...DEFAULTS, width: 0 }).chs;
